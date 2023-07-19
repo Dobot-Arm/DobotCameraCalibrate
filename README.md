@@ -11,3 +11,5 @@ Camera calibration tool
 4. DobotCalibrateStudio的源码遵循LGPL协议
 
 5. DobotCalibrateStudio在海康相机SDK基础上做的二次开发，海康SDK请查看海康机器人官网介绍。
+
+6. DobotCalibrateStudio代码已经开源到[github上](https://github.com/Dobot-Arm/DobotCameraCalibrate)
