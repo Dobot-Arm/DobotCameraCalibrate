@@ -35,6 +35,8 @@ public:
     BoxArea boxArea;
     ShowArea areaShowArea;
     QString frame;
+    int width = 0; //图片宽
+    int height = 0; //图片高
 };
 
 #endif // GREYAREARUNRESULT_H

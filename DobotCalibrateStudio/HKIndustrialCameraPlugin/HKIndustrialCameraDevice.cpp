@@ -498,7 +498,7 @@ bool HKIndustrialCameraDevice::generateCalibrateFile(const QString &strSaveFileF
         m_strErrMsg = "can not resolve GenerateCalibrateFile function";
         return false;
     }
-    QByteArray arrName = strSaveFileFullName.toLocal8Bit();
+    QByteArray arrName = strSaveFileFullName.toUtf8();
     int nRet = m_pfnGenerateCalibrateFile(m_pHandler, arrName.constData());
     if (0 != nRet)
     {
@@ -518,7 +518,8 @@ bool HKIndustrialCameraDevice::generateCalibrateFile(const QString &strSaveFileF
 }
 
 bool HKIndustrialCameraDevice::createUserCoordinate(const QString &strCalibrateFile, const MyPointF6D &robotPos,
-                                              MyPointF6D& coordinatePos, int& iId, QImage& retImg)
+                                                    const double qrCodeSquare,MyPointF6D& coordinatePos, int& iId,
+                                                    QImage& retImg)
 {
     if (!m_pfnCreateUserCoordinate || !m_pHandler)
     {
@@ -529,8 +530,8 @@ bool HKIndustrialCameraDevice::createUserCoordinate(const QString &strCalibrateF
 
     MyPointIndustrial robot,coordinate;
     copyValueFrom(robotPos, robot);
-    QByteArray arrName = strCalibrateFile.toLocal8Bit();
-    int nRet = m_pfnCreateUserCoordinate(m_pHandler, arrName.constData(), &robot, &coordinate,&iId,
+    QByteArray arrName = strCalibrateFile.toUtf8();
+    int nRet = m_pfnCreateUserCoordinate(m_pHandler, arrName.constData(), &robot, qrCodeSquare, &coordinate,&iId,
                                          &HKIndustrialTakePictureCallback, &retImg);
     if (0 != nRet)
     {

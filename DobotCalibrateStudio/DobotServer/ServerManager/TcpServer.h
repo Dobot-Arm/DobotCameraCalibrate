@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QHash>
 #include <QQueue>
+#include <QTimer>
 
 class CTcpServer : public IServerInterface
 {
@@ -23,6 +24,7 @@ public:
     void sendMsgToClient(const CMessageResponse& msg) Q_DECL_OVERRIDE;
 
 private slots:
+    bool slotCheckListening();
     void slotNewConnection();
     void slotCloseServer();
     void slotClientRecvMsg();
@@ -37,6 +39,7 @@ private:
 
 private:
     QTcpServer* m_pServer;
+    QTimer* m_pTimerListen;
     QHash<QTcpSocket*,std::shared_ptr<QByteArray>> m_allClient;
 };
 

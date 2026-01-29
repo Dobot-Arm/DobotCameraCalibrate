@@ -688,7 +688,8 @@ void CDobotDevice::createUserCoordinate(const CMessageRequest &msg)
     int iId = -1;
     QImage img;
 
-    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, coordinatePos, iId, img);
+    const double fQrCodeSqure = request.m_data.qrCodeSquare;
+    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos,fQrCodeSqure, coordinatePos, iId, img);
 
     CCreateUserCoordinateResultResponseResult result;
     result.m_data.x = coordinatePos.x;
@@ -776,7 +777,8 @@ void CDobotDevice::createUserCoordinateV2(const CMessageRequest &msg)
     int iId = -1;
     QImage img;
 
-    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, coordinatePos, iId, img);
+    const double fQrCodeSqure = request.m_data.qrCodeSquare;
+    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, fQrCodeSqure, coordinatePos, iId, img);
 
     CCreateUserCoordinateV2ResultResponseResult result;
     result.m_data.x = coordinatePos.x;

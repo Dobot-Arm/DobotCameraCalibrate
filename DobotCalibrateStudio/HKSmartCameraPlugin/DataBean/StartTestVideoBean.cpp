@@ -5,6 +5,7 @@ bool CStartTestVideoRequestBean::fromJson(const QJsonObject &obj)
     if (obj.contains("identify") && obj["identify"].isString()) identify = obj["identify"].toString();
     if (obj.contains("returnFrame") && obj["returnFrame"].isBool()) returnFrame = obj["returnFrame"].toBool();
     if (obj.contains("returnResult") && obj["returnResult"].isBool()) returnResult = obj["returnResult"].toBool();
+    if (obj.contains("moduleId") && obj["moduleId"].isDouble()) moduleId = obj["moduleId"].toInt();
     return true;
 }
 
@@ -14,6 +15,7 @@ QJsonObject CStartTestVideoRequestBean::toJsonObject() const
     obj.insert("identify", identify);
     obj.insert("returnFrame",returnFrame);
     obj.insert("returnResult",returnResult);
+    obj.insert("moduleId",moduleId);
     return obj;
 }
 

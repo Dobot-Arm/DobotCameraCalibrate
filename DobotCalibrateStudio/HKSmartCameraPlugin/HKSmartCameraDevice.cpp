@@ -129,6 +129,12 @@ void HKSmartCameraDevice::initLib()
     HKICD_FUNC_LOAD(FileAccessRead);
     HKICD_FUNC_LOAD(FileAccessWrite);
     HKICD_FUNC_LOAD(GetGenICamXML);
+    HKICD_FUNC_LOAD(UpdateFirmware);
+    HKICD_FUNC_LOAD(GetUpdateFirmwareProgress);
+    HKICD_FUNC_LOAD(FormatToYaml);
+    HKICD_FUNC_LOAD(GetToolTransformation);
+    HKICD_FUNC_LOAD(GetAxisTransformation);
+    HKICD_FUNC_LOAD(GetReusePoint);
 }
 
 void HKSmartCameraDevice::uninitLib()
@@ -175,6 +181,12 @@ void HKSmartCameraDevice::uninitLib()
     HKICM_FUNC_PTR_MEM_NULL(FileAccessRead);
     HKICM_FUNC_PTR_MEM_NULL(FileAccessWrite);
     HKICM_FUNC_PTR_MEM_NULL(GetGenICamXML);
+    HKICM_FUNC_PTR_MEM_NULL(UpdateFirmware);
+    HKICM_FUNC_PTR_MEM_NULL(GetUpdateFirmwareProgress);
+    HKICM_FUNC_PTR_MEM_NULL(FormatToYaml);
+    HKICM_FUNC_PTR_MEM_NULL(GetToolTransformation);
+    HKICM_FUNC_PTR_MEM_NULL(GetAxisTransformation);
+    HKICM_FUNC_PTR_MEM_NULL(GetReusePoint);
 }
 
 bool HKSmartCameraDevice::IsDeviceAccessible(const QString& strIdetify)
@@ -210,6 +222,7 @@ bool HKSmartCameraDevice::search(QList<CameraInfo>& retInfo)
         m_strErrMsg = QString::asprintf("fail to search camera,%s",szMsg);
         return false;
     }
+    retInfo.clear();
     for (int i=0; i<iCount; ++i)
     {
         CameraInfo ci;
@@ -257,6 +270,30 @@ bool HKSmartCameraDevice::search(QList<CameraInfo>& retInfo)
 
         retInfo.push_back(ci);
     }
+
+    if (retInfo.isEmpty())
+    {
+        ++m_iSearchFailTryTimes;
+        if (m_iSearchFailTryTimes>3)
+        {
+            m_cameraCacheInfo.clear();
+            m_iSearchFailTryTimes = 0;
+            m_iErrCode = DT_ERR_SEARCH_CAMERA;
+            m_strErrMsg = "can not search camera,maybe lost of camera";
+            return false;
+        }
+        else
+        {
+            qDebug()<<"cannot search any camera,use cache camera!!!!!!!!";
+            retInfo = m_cameraCacheInfo;
+        }
+    }
+    else
+    {
+        m_iSearchFailTryTimes= 0;
+        m_cameraCacheInfo = retInfo;
+    }
+
     m_iErrCode = DT_NO_ERROR;
     m_strErrMsg = "";
 
@@ -390,7 +427,7 @@ bool HKSmartCameraDevice::startVideo()
     return 0 == nRet;
 }
 
-bool HKSmartCameraDevice::startTestVideo()
+bool HKSmartCameraDevice::startTestVideo(int iModuleId)
 {
     if (!m_pfnStartTestCamera || !m_pHandler)
     {
@@ -398,7 +435,7 @@ bool HKSmartCameraDevice::startTestVideo()
         m_strErrMsg = "can not resolve StartTestCamera function";
         return false;
     }
-    int nRet = m_pfnStartTestCamera(m_pHandler, &HKSmartVideoCallback, this);
+    int nRet = m_pfnStartTestCamera(m_pHandler, iModuleId, &HKSmartVideoCallback, this);
     if (0 != nRet)
     {
         m_iErrCode = DT_ERR_START_VIDEO;
@@ -575,7 +612,7 @@ bool HKSmartCameraDevice::generateCalibrateFile(const QString &strSaveFileFullNa
         m_strErrMsg = "can not resolve GenerateCalibrateFile function";
         return false;
     }
-    QByteArray arrName = strSaveFileFullName.toLocal8Bit();
+    QByteArray arrName = strSaveFileFullName.toUtf8();
     int nRet = m_pfnGenerateCalibrateFile(m_pHandler, arrName.constData());
     if (0 != nRet)
     {
@@ -595,7 +632,8 @@ bool HKSmartCameraDevice::generateCalibrateFile(const QString &strSaveFileFullNa
 }
 
 bool HKSmartCameraDevice::createUserCoordinate(const QString &strCalibrateFile, const MyPointF6D &robotPos,
-                                              MyPointF6D& coordinatePos, int& iId, ProjectResultInfo& picture)
+                                              const double qrCodeSquare,MyPointF6D& coordinatePos, int& iId,
+                                               ProjectResultInfo& picture)
 {
     if (!m_pfnCreateUserCoordinate || !m_pHandler)
     {
@@ -606,9 +644,9 @@ bool HKSmartCameraDevice::createUserCoordinate(const QString &strCalibrateFile, 
 
     MyPointSmart robot,coordinate;
     copyValueFrom(robotPos, robot);
-    QByteArray arrName = strCalibrateFile.toLocal8Bit();
+    QByteArray arrName = strCalibrateFile.toUtf8();
 
-    int nRet = m_pfnCreateUserCoordinate(m_pHandler, arrName.constData(), &robot, &coordinate,&iId,
+    int nRet = m_pfnCreateUserCoordinate(m_pHandler, arrName.constData(), &robot, qrCodeSquare, &coordinate,&iId,
                                          &HKSmartTakePictureCallback, &picture);
     if (0 != nRet)
     {
@@ -776,11 +814,15 @@ bool HKSmartCameraDevice::getCameraXmlAttribute(QMap<QString, MyVsXmlAttribute> 
 
     const char* pData = reinterpret_cast<const char*>(pGenICamXML.get());
     //保存到文件方便查询吧
-    QFile file("CameraXmlAttribute.xml");
+    QFile file(QCoreApplication::applicationDirPath()+QDir::separator()+"CameraXmlAttribute.xml");
     if (file.open(QFile::WriteOnly|QFile::Truncate))
     {
         file.write(pData,nFileLen);
         file.close();
+    }
+    else
+    {
+        qDebug()<<file.fileName()<<":"<<file.errorString();
     }
 
     QDomDocument doc;
@@ -803,11 +845,15 @@ bool HKSmartCameraDevice::getModuleTranslate(QMap<QString, MyModuleTranslate> &t
     }
 
     //保存到文件方便查询吧
-    QFile file("CameraTranslate.json");
+    QFile file(QCoreApplication::applicationDirPath()+QDir::separator()+"CameraTranslate.json");
     if (file.open(QFile::WriteOnly|QFile::Truncate))
     {
         file.write(xmlData);
         file.close();
+    }
+    else
+    {
+        qDebug()<<file.fileName()<<":"<<file.errorString();
     }
 
     QDomDocument doc;
@@ -1217,7 +1263,7 @@ bool HKSmartCameraDevice::FileAccessRead(QByteArray& fileData, const char* pszDe
 {
     std::string strDevFile(pszDevFile);
     bool bRet = true;
-    unsigned int nMaxFileSize = 102400;
+    unsigned int nMaxFileSize = 2048000; //2000k
     MV_VS_FILE_ACCESS mvsfa;
     memset(&mvsfa, 0, sizeof(MV_VS_FILE_ACCESS));
     mvsfa.pDevFileName = const_cast<char*>(strDevFile.c_str());
@@ -1231,22 +1277,19 @@ bool HKSmartCameraDevice::FileAccessRead(QByteArray& fileData, const char* pszDe
         const int MV_VS_E_NOENOUGH_BUF = 0x8003000A;
         int nRetCode = 0;
         bRet = FileAccessRead(mvsfa, nRetCode);
-        if (!bRet)
-        {
-            if (MV_VS_E_NOENOUGH_BUF == nRetCode || nMaxFileSize < mvsfa.nFileTotalLen)
-            {//Insufficient memory
-                free(mvsfa.pFile);
+        if (MV_VS_E_NOENOUGH_BUF == nRetCode || nMaxFileSize < mvsfa.nFileTotalLen)
+        {//Insufficient memory
+            free(mvsfa.pFile);
 
-                nMaxFileSize = mvsfa.nFileTotalLen;
-                memset(&mvsfa, 0, sizeof(MV_VS_FILE_ACCESS));
-                mvsfa.pDevFileName = const_cast<char*>(strDevFile.c_str());
-                mvsfa.nMaxFileSize = nMaxFileSize;
-                mvsfa.pFile = (char*)malloc(mvsfa.nMaxFileSize + 1);
-                memset(mvsfa.pFile, 0, mvsfa.nMaxFileSize + 1);
-                mvsfa.nOffset = 0;
+            nMaxFileSize = mvsfa.nFileTotalLen;
+            memset(&mvsfa, 0, sizeof(MV_VS_FILE_ACCESS));
+            mvsfa.pDevFileName = const_cast<char*>(strDevFile.c_str());
+            mvsfa.nMaxFileSize = nMaxFileSize;
+            mvsfa.pFile = (char*)malloc(mvsfa.nMaxFileSize + 1);
+            memset(mvsfa.pFile, 0, mvsfa.nMaxFileSize + 1);
+            mvsfa.nOffset = 0;
 
-                bRet = FileAccessRead(mvsfa, nRetCode);
-            }
+            bRet = FileAccessRead(mvsfa, nRetCode);
         }
     }while(false);
 
@@ -1281,7 +1324,7 @@ bool HKSmartCameraDevice::FileAccessRead(MV_VS_FILE_ACCESS &stFileAccess, int& n
     }
 
     int nRet = m_pfnFileAccessRead(m_pHandler, &stFileAccess);//0x8003000A
-    nRetCode = nRet;
+    nRetCode = m_pfnGetErrCode(m_pHandler);
     if (0 != nRet)
     {
         m_iErrCode = DT_ERR_GSET_TYPE_VALUE;
@@ -1306,7 +1349,7 @@ bool HKSmartCameraDevice::FileAccessWrite(const QByteArray& fileData, const char
 
     std::string strDevFile(pszDevFile);
     bool bRet = true;
-    const unsigned int nBufferSize = 102400;
+    const unsigned int nBufferSize = 204800;
     MV_VS_FILE_ACCESS mvsfa;
     memset(&mvsfa, 0, sizeof(MV_VS_FILE_ACCESS));
     mvsfa.pDevFileName = const_cast<char*>(strDevFile.c_str());
@@ -1341,7 +1384,7 @@ bool HKSmartCameraDevice::FileAccessWrite(QIODevice& file, const char* pszDevFil
 {
     std::string strDevFile(pszDevFile);
     bool bRet = true;
-    const unsigned int nBufferSize = 102400;
+    const unsigned int nBufferSize = 204800;
     MV_VS_FILE_ACCESS mvsfa;
     memset(&mvsfa, 0, sizeof(MV_VS_FILE_ACCESS));
     mvsfa.pDevFileName = const_cast<char*>(strDevFile.c_str());
@@ -1425,5 +1468,140 @@ bool HKSmartCameraDevice::GetGenICamXML(unsigned char* pBuffer, unsigned int nBu
         m_strErrMsg = "";
     }
 
+    return true;
+}
+
+bool HKSmartCameraDevice::updateFirmware(const QString &strFile)
+{
+    if (!m_pfnUpdateFirmware || !m_pHandler)
+    {
+        m_iErrCode = DT_ERR_UPDATE_FIRMWARE;
+        m_strErrMsg = "can not resolve UpdateFirmware function";
+        return false;
+    }
+    QByteArray btLocal = strFile.toLocal8Bit(); //海康的此接口的文件路径需要转为本地编码
+    int nRet = m_pfnUpdateFirmware(m_pHandler, btLocal.constData());
+    if (0 != nRet)
+    {
+        m_iErrCode = DT_ERR_UPDATE_FIRMWARE;
+        char szMsg[1024]="";
+        m_pfnGetErrMsg(m_pHandler, szMsg);
+        m_strErrMsg = QString::asprintf("UpdateFirmware fail,%s",szMsg);
+
+        return false;
+    }
+    else
+    {
+        m_iErrCode = DT_NO_ERROR;
+        m_strErrMsg = "";
+    }
+
+    return true;
+}
+
+bool HKSmartCameraDevice::getUpdateFirmwareProgress(unsigned int &nProgress)
+{
+    if (!m_pfnGetUpdateFirmwareProgress || !m_pHandler)
+    {
+        m_iErrCode = DT_ERR_UPDATE_FIRMWARE_PROGRESS;
+        m_strErrMsg = "can not resolve GetUpdateFirmwareProgress function";
+        return false;
+    }
+    int nRet = m_pfnGetUpdateFirmwareProgress(m_pHandler, &nProgress);
+    if (0 != nRet)
+    {
+        m_iErrCode = DT_ERR_UPDATE_FIRMWARE_PROGRESS;
+        char szMsg[1024]="";
+        m_pfnGetErrMsg(m_pHandler, szMsg);
+        m_strErrMsg = QString::asprintf("GetUpdateFirmwareProgress fail,%s",szMsg);
+
+        return false;
+    }
+    else
+    {
+        m_iErrCode = DT_NO_ERROR;
+        m_strErrMsg = "";
+    }
+
+    return true;
+}
+
+bool HKSmartCameraDevice::Format2Yaml(const QString& strSrcFile, const QString& strDestFile)
+{
+    if (!m_pfnFormatToYaml)
+    {
+        m_iErrCode = DT_ERR_INVALID_PARAMS;
+        m_strErrMsg = "can not resolve Format2Yaml function";
+        return false;
+    }
+
+    std::unique_ptr<char[]> uptr(new char[1024]);
+    memset(uptr.get(),0,1024);
+    QByteArray arrSrc = strSrcFile.toUtf8();
+    QByteArray arrDest = strDestFile.toUtf8();
+    int nRet = m_pfnFormatToYaml(arrSrc.constData(), arrDest.constData(),uptr.get(),1023);
+    if (0 != nRet)
+    {
+        m_iErrCode = DT_ERR_INVALID_PARAMS;
+        m_strErrMsg = QString::asprintf("Format2Yaml fail,%s",uptr.get());
+
+        return false;
+    }
+    else
+    {
+        m_iErrCode = DT_NO_ERROR;
+        m_strErrMsg = "";
+    }
+
+    return true;
+}
+
+bool HKSmartCameraDevice::GetToolTransformation(const double oldPoint[6], const double newPoint[6], double outPoint[16])
+{
+    if (!m_pfnGetToolTransformation)
+    {
+        m_iErrCode = DT_ERR_INVALID_PARAMS;
+        m_strErrMsg = "can not resolve GetToolTransformation function";
+        return false;
+    }
+    m_pfnGetToolTransformation(oldPoint,newPoint,outPoint);
+    return true;
+}
+
+bool HKSmartCameraDevice::GetAxisTransformation(const double oldPoint[4][6], const double newPoint[4][6],double outPoint[16])
+{
+    if (!m_pfnGetAxisTransformation)
+    {
+        m_iErrCode = DT_ERR_INVALID_PARAMS;
+        m_strErrMsg = "can not resolve GetAxisTransformation function";
+        return false;
+    }
+    m_pfnGetAxisTransformation(oldPoint[0],oldPoint[1],oldPoint[2],oldPoint[3],
+                                newPoint[0],newPoint[1],newPoint[2],newPoint[3],
+                                outPoint);
+    return true;
+}
+
+bool HKSmartCameraDevice::GetReusePoint(const double oldPoint[6], const QList<double>& toolRT,
+                                        const QList<double>& coordRT,double outPoint[6])
+{
+    if (!m_pfnGetReusePoint)
+    {
+        m_iErrCode = DT_ERR_INVALID_PARAMS;
+        m_strErrMsg = "can not resolve GetReusePoint function";
+        return false;
+    }
+
+    double toolRT_[16]={};
+    double coordRT_[16]={};
+    for (int i=0; i<toolRT.size()&&i<16;++i)
+    {
+        toolRT_[i] = toolRT[i];
+    }
+    for (int i=0; i<coordRT.size()&&i<16;++i)
+    {
+        coordRT_[i] = coordRT[i];
+    }
+    m_pfnGetReusePoint(oldPoint,toolRT_,toolRT.size(),coordRT_,coordRT.size(),outPoint);
     return true;
 }

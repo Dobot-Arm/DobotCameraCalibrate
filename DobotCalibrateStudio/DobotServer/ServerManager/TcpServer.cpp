@@ -12,6 +12,10 @@ CTcpServer::CTcpServer(QObject *parent) : IServerInterface(parent)
     connect(m_pServer, &QTcpServer::acceptError, this, [this](QAbstractSocket::SocketError socketError){
         qCritical()<<"tcp server acceptError:"<<socketError<<","<<m_pServer->errorString();
     });
+
+    m_pTimerListen = new QTimer(this);
+    m_pTimerListen->setInterval(2000);
+    connect(m_pTimerListen, &QTimer::timeout, this, &CTcpServer::slotCheckListening);
 }
 
 CTcpServer::~CTcpServer()
@@ -34,6 +38,22 @@ QTcpSocket* CTcpServer::convertToClient(QString strSenderId)
 
 bool CTcpServer::listen()
 {
+    m_pTimerListen->start();
+    return slotCheckListening();
+}
+
+void CTcpServer::close()
+{
+    m_pTimerListen->stop();
+    if (m_pServer->isListening())
+    {
+        m_pServer->close();
+    }
+    slotCloseServer();
+}
+
+bool CTcpServer::slotCheckListening()
+{
     bool bOk = false;
     if (!m_pServer->isListening())
     {
@@ -44,15 +64,6 @@ bool CTcpServer::listen()
         }
     }
     return bOk;
-}
-
-void CTcpServer::close()
-{
-    if (m_pServer->isListening())
-    {
-        m_pServer->close();
-    }
-    slotCloseServer();
 }
 
 void CTcpServer::slotNewConnection()

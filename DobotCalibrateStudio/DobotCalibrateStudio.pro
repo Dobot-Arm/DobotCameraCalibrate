@@ -12,6 +12,8 @@ MOC_DIR = $${MOC_OBJ_TEMPFILE}
 OBJECTS_DIR = $${MOC_OBJ_TEMPFILE}
 
 SUBDIRS += \
+    DobotCameraImage \
+    DobotControllerPlugin \
     DobotInterfacePlugin \
     DobotCalibrate \
     DobotCalibrateConsole \

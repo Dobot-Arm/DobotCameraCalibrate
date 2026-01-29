@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMutex>
+#include <atomic>
 
 #include "JsonMessage.h"
 #include "HKSmartCameraDevice.h"
@@ -22,6 +23,7 @@ public:
 
     void closeNotResponse();
 
+    static QString getMyCachePath();
 signals:
     void doResponseMsg(QJsonObject obj, QPrivateSignal);
 
@@ -36,7 +38,6 @@ private:
     bool checkIpAddressValid(const QString& strIp);
 
     QString fixSavePath(const QString& strPath);
-    QString getMyCachePath() const;
     QString getLastTempCalibrateFile() const;
     void updateLastTempCalibrateFile(const QString& strSrcFile) const;
 
@@ -54,6 +55,7 @@ private:
     void startVideo(const CMessageRequest &msg);
     void startVideoV2(const CMessageRequest &msg);
     void startTestVideo(const CMessageRequest &msg);
+    void startVideoImage(const CMessageRequest &msg);
     void stopVideo(const CMessageRequest &msg);
     void takePhoto(const CMessageRequest &msg);
     void takeBasePhoto(const CMessageRequest &msg);
@@ -73,6 +75,8 @@ private:
     void getCurrentSelectedProject(const CMessageRequest &msg);
     void importProject(const CMessageRequest &msg);
     void exportProject(const CMessageRequest &msg);
+    void importProjectDobot(const CMessageRequest &msg);
+    void exportProjectDobot(const CMessageRequest &msg);
     void createProject(const CMessageRequest &msg);
     void deleteProject(const CMessageRequest &msg);
     void copyProject(const CMessageRequest &msg);
@@ -80,6 +84,7 @@ private:
     void saveProject(const CMessageRequest &msg);
     void saveAsProject(const CMessageRequest &msg);
     void switchProject(const CMessageRequest &msg);
+    void setSwitchProjectTurnOn(const CMessageRequest &msg);
     void getAllSupportModuleList(const CMessageRequest &msg);
     void getProjectModuleList(const CMessageRequest &msg);
     void addModule(const CMessageRequest &msg);
@@ -88,6 +93,7 @@ private:
     void setModuleShowName(const CMessageRequest &msg);
     void getModuleShowName(const CMessageRequest &msg);
     void getModuleUIAllParameters(const CMessageRequest &msg);
+    void getModuleUIParamValue(const CMessageRequest &msg);
     void setModuleUIParameters(const CMessageRequest &msg);
     void setCameraPassword(const CMessageRequest &msg);
     void cameraSoftReboot(const CMessageRequest &msg);
@@ -95,25 +101,34 @@ private:
     void getCommunicateEnable(const CMessageRequest &msg);
     void get25DCalibrateFileList(const CMessageRequest &msg);
     void get2DCalibrateFileList(const CMessageRequest &msg);
+    void getModuleCalibrateFileList(const CMessageRequest &msg);
     void delete25DCalibrateFile(const CMessageRequest &msg);
     void delete2DCalibrateFile(const CMessageRequest &msg);
+    void deleteModuleCalibrateFile(const CMessageRequest &msg);
     void switch25DCalibrateFile(const CMessageRequest &msg);
     void switch2DCalibrateFile(const CMessageRequest &msg);
+    void switchModuleCalibrateFile(const CMessageRequest &msg);
     void add25DCalibrateFile(const CMessageRequest &msg);
     void add25DCalibrateFileV2(const CMessageRequest &msg);
     void add2DCalibrateFile(const CMessageRequest &msg);
     void add2DCalibrateFileV2(const CMessageRequest &msg);
+    void addModuleCalibrateFile(const CMessageRequest &msg);
+    void addModuleCalibrateFileV2(const CMessageRequest &msg);
     void export2DCalibrateParam(const CMessageRequest &msg);
     void export2DCalibrateParamV2(const CMessageRequest &msg);
     void getBaseImageHistroyImageInfoList(const CMessageRequest &msg);
     void getBaseImageHistroyImageData(const CMessageRequest &msg);
     void setBaseImageFromCurrent(const CMessageRequest &msg);
     void setBaseImageFromHistory(const CMessageRequest &msg);
+    void setBaseImageFromPC(const CMessageRequest &msg);
     void getCurrentProjectRunningState(const CMessageRequest &msg);
     void getOutputConfigProjectResultCategory(const CMessageRequest &msg);
     void getOutputConfigProjectResultCustomLogicData(const CMessageRequest &msg);
     void setOutputConfigProjectResultCustomLogicData(const CMessageRequest &msg);
     void getOutputConfigProjectResultCustomLogicSupportList(const CMessageRequest &msg);
+    void getToolSupportParamList(const CMessageRequest &msg);
+    void getToolParamValue(const CMessageRequest &msg);
+    void setToolParamValue(const CMessageRequest &msg);
     void get2DInputPointSupportList(const CMessageRequest &msg);
     void get2DInputPointValue(const CMessageRequest &msg);
     void set2DInputPointValue(const CMessageRequest &msg);
@@ -134,6 +149,19 @@ private:
     void getOutputResultSupportList(const CMessageRequest &msg);
     void getOutputResultDataList(const CMessageRequest &msg);
     void setOutputResultDataList(const CMessageRequest &msg);
+
+    //计算点位复用功能
+    void getToolTransformation(const CMessageRequest &msg);
+    void getAxisTransformation(const CMessageRequest &msg);
+    void getReusePoint(const CMessageRequest &msg);
+
+    void getDeviceUserId(const CMessageRequest &msg);
+    void setDeviceUserId(const CMessageRequest &msg);
+    void updateFirmware(const CMessageRequest &msg);
+    void getUpdateFirmwareProgress(const CMessageRequest &msg);
+
+    void getDlocrdetectFilterConfig(const CMessageRequest &msg);
+    void setDlocrdetectFilterConfig(const CMessageRequest &msg);
 
 private:
     typedef void (CDobotDevice::*pfnCmdCallback)(const CMessageRequest &msg);
@@ -165,6 +193,9 @@ private:
     //解决方案运行保存的临时结果
     CGetProjectRunResultResponseBean2 m_objProjectRunResult;
     QMutex m_mtxProjectRunResult;
+
+    std::atomic_bool m_bIsUpdateFirmware; //是否正在升级固件
+    std::atomic_bool m_bIsUpdateFirmwareResult; //固件升级结果
 };
 
 #endif // CDOBOTDEVICE_H

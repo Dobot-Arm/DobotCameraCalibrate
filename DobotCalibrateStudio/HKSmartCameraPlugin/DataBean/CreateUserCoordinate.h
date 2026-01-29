@@ -19,6 +19,7 @@ struct CCreateUserCoordinateRequestBean : public CJsonMessage
     double rx = 0.0;
     double ry = 0.0;
     double rz = 0.0;
+    double qrCodeSquare = 50.0; //二维码尺寸
 };
 
 class CCreateUserCoordinateRequestParams : public CJsonMessage
@@ -49,6 +50,8 @@ struct CCreateUserCoordinateResultResponseBean : public CJsonMessage
     double rz = 0.0;
     int id = -1; //标定板序列号
     QString frame; //图片数据流帧，base64编码
+    int width;
+    int height;
     QString fileName; //生成的图片名称，比如 a.bmp
 };
 

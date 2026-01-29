@@ -215,6 +215,7 @@ void CLogger::clearAllLogFile()
 
 void CLogger::insertLog(const QPair<QString,QString>& strLog)
 {
+    if (!(m_bIsPrintLogFile||m_bIsEmitted)) return; //日志不打印也不写到窗口上，就没必要这样操作
     m_mtx.lock();
     m_logCache.append(strLog);
     m_mtx.unlock();

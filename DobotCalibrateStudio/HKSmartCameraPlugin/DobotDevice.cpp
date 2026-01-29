@@ -5,17 +5,40 @@
 #include <QCoreApplication>
 #include <QNetworkInterface>
 #include <QCryptographicHash>
+#include <QThread>
+#include <QPainter>
+#include <QDataStream>
 #include <memory>
+#include<QImageReader>
+#include<QStandardPaths>
 #ifdef Q_OS_WIN
 #include <iphlpapi.h>
 #endif
 #include "yaml-cpp/yaml.h"
+#include "ZipManager.h"
 
+//把相机读出来的内容保存起来
+static void saveCameraContent2File(const QString& strFile, const QByteArray& fileData)
+{
+    QString str=QCoreApplication::applicationDirPath()+QDir::separator()+QString(strFile);
+    QFile file(str);
+    if (file.open(QFile::WriteOnly|QFile::Truncate))
+    {
+        file.write(fileData);
+        file.close();
+    }
+    else
+    {
+        qDebug()<<file.fileName()<<":"<<file.errorString();
+    }
+}
 
 CDobotDevice::CDobotDevice(QObject *parent) : QObject(parent)
 {
     initFunctionMapper();
     m_pCameraDevice = new HKSmartCameraDevice(this);
+    m_bIsUpdateFirmware.store(false);
+    m_bIsUpdateFirmwareResult.store(false);
 }
 
 CDobotDevice::~CDobotDevice()
@@ -205,7 +228,7 @@ QString CDobotDevice::fixSavePath(const QString &strPath)
     return strTmp;
 }
 
-QString CDobotDevice::getMyCachePath() const
+QString CDobotDevice::getMyCachePath()
 {
     static QString strSavePath;
     QFileInfo info(strSavePath);
@@ -480,7 +503,6 @@ void CDobotDevice::close(const CMessageRequest &msg)
 
 void CDobotDevice::startVideo(const CMessageRequest &msg)
 {
-    //if (m_pCameraDevice->inherits("HKSmartCameraDevice"))
     CStartVideoRequestParams request;
     request.fromJson(msg.getParams());
 
@@ -544,6 +566,7 @@ void CDobotDevice::startVideoV2(const CMessageRequest &msg)
     bool ret = m_pCameraDevice->startVideo();
     if (ret)
     {
+        m_strVideoLastMsgUuid = strMsgUuid;
         CStartVideoV2ResponseResult result;
         sendResponseSuccess(strMsgUuid, result);
     }
@@ -589,12 +612,82 @@ void CDobotDevice::startTestVideo(const CMessageRequest &msg)
         }
         sendResponseSuccess(strMsgUuid, result, false);
     });
-    bool ret = m_pCameraDevice->startTestVideo();
+    bool ret = m_pCameraDevice->startTestVideo(request.m_data.moduleId);
     if (ret)
     {
         m_strVideoLastMsgUuid = strMsgUuid;
         CStartTestVideoResponseResult result;
         result.m_data.frame = "";
+        sendResponseSuccess(strMsgUuid, result, false);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+static QPair<QString,QString> getImageFileRelativePath(const QString& dirPath, const QString& strSolutionName)
+{
+    QDateTime dt = QDateTime::currentDateTime();
+    QString strDate = dt.date().toString("yyyyMMdd");
+    QString strTime = dt.time().toString("hhmmss_zzz");
+
+    QString strSubFolder = QString("%1%2%3").arg(strSolutionName).arg(QDir::separator()).arg(strDate);
+    QString strFileName = QString("%1.jpg").arg(strTime);
+    QString strRelative = strSubFolder+QDir::separator()+strFileName;
+
+    QDir dir(dirPath);
+    if (!dir.exists(strSubFolder))
+    {
+        if (!dir.mkpath(dir.absoluteFilePath(strSubFolder))) return {"",""}; //创建路径失败
+    }
+    dir.cd(strSubFolder);
+    return {dir.absoluteFilePath(strFileName),strRelative};
+}
+void CDobotDevice::startVideoImage(const CMessageRequest &msg)
+{
+    CStartVideoImageRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QString strSaveDir = request.m_data.saveDir;
+    QString strMsgUuid = msg.getMsgUuid();
+    static_cast<HKSmartCameraDevice*>(m_pCameraDevice)->setVideoImageDataCallback([this,strMsgUuid,strSaveDir](const ProjectResultInfo& info){
+        CStartVideoResponseResult resultTmp;
+        resultTmp.setPrintLog(false); //视频图片不要打印，否则日志太多
+        parseProjectRunResult(info.strResultData, info.renderImg, resultTmp.m_data.result);
+        if (true)
+        {
+            QMutexLocker guard(&m_mtxProjectRunResult);
+            m_objProjectRunResult = resultTmp.m_data.result;
+        }
+
+        QPair<QString,QString> fileInfo = getImageFileRelativePath(strSaveDir,resultTmp.m_data.result.solutionName);
+        if (fileInfo.first.isEmpty())
+        {
+            sendResponseError(strMsgUuid, DT_ERR_SAVE_FILE, "", false);
+        }
+        else
+        {
+            CStartVideoImageResponseResult result;
+            result.m_data.subFilePath = fileInfo.second;
+            result.m_data.solutionName = resultTmp.m_data.result.solutionName;
+            if (info.img.save(fileInfo.first))
+            {
+                sendResponseSuccess(strMsgUuid, result, false);
+            }
+            else
+            {
+                sendResponseError(strMsgUuid, DT_ERR_SAVE_FILE, "", false);
+            }
+        }
+    });
+    bool ret = m_pCameraDevice->startVideo();
+    if (ret)
+    {
+        m_strVideoLastMsgUuid = strMsgUuid;
+        CStartVideoImageResponseResult result;
+        result.m_data.subFilePath = "";
+        result.m_data.solutionName = "";
         sendResponseSuccess(strMsgUuid, result, false);
     }
     else
@@ -632,12 +725,7 @@ void CDobotDevice::takePhoto(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("takePhotoResult.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(info.strResultData.toUtf8());
-            file.close();
-        }
+        saveCameraContent2File(str,info.strResultData.toUtf8());
     }
 
     if (info.img.isNull())
@@ -703,12 +791,7 @@ void CDobotDevice::takeBasePhoto(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("takeBasePhotoResult.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(info.strResultData.toUtf8());
-            file.close();
-        }
+        saveCameraContent2File(str,info.strResultData.toUtf8());
     }
 
     if (info.img.isNull())
@@ -900,7 +983,42 @@ void CDobotDevice::createUserCoordinate(const CMessageRequest &msg)
     MyPointF6D coordinatePos;
     int iId = -1;
     ProjectResultInfo pictureInfo;
-    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, coordinatePos, iId, pictureInfo);
+
+    const double fQrCodeSqure = request.m_data.qrCodeSquare;
+    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, fQrCodeSqure, coordinatePos, iId, pictureInfo);
+
+    //从相机运行结果中获取用户坐标系，而不是从算法接口中获取******************************************************
+    CGetProjectRunResultResponseBean2 runResult;
+    parseProjectRunResult(pictureInfo.strResultData, pictureInfo.renderImg, runResult);
+    for (int i=0; i<runResult.data.size(); ++i)
+    {
+        auto& resbean = runResult.data[i];
+        const QString strType = resbean.moduleData->getType();
+        if (MacapriltagRunResult::isMine(strType))
+        {
+            auto* ptr = dynamic_cast<MacapriltagRunResult*>(resbean.moduleData.get());
+            if (ptr)
+            {
+                qDebug()<<"it has find the result of \""<<strType<<"\", the algorithm calcute result is:"
+                        <<"x="<<coordinatePos.x<<",y="<<coordinatePos.y<<",coordinatePos.z="<<coordinatePos.z
+                       <<",rx="<<coordinatePos.rx<<",ry="<<coordinatePos.ry<<",coordinatePos.rz="<<coordinatePos.rz
+                      <<",cid="<<iId<<"\r\n, We will use the camera's run results instead of the algorithm's calculated result";
+                coordinatePos.x = ptr->x;
+                coordinatePos.y = ptr->y;
+                coordinatePos.z = ptr->z;
+                coordinatePos.rx = ptr->rx;
+                coordinatePos.ry = ptr->ry;
+                coordinatePos.rz = ptr->rz;
+                iId = ptr->id;
+            }
+            else
+            {
+                qDebug()<<"has find the \""<<strType<<"\",but the pointer is not MacapriltagRunResult*";
+            }
+            break;
+        }
+    }
+    //***************************************************************************************************
 
     CCreateUserCoordinateResultResponseResult result;
     result.m_data.x = coordinatePos.x;
@@ -913,6 +1031,8 @@ void CDobotDevice::createUserCoordinate(const CMessageRequest &msg)
     if (isReturnFrame)
     {
         result.m_data.frame = image2Base64Byte(pictureInfo.img);
+        result.m_data.width = pictureInfo.sz.width();
+        result.m_data.height = pictureInfo.sz.height();
     }
 
     if (!request.m_data.savePath.isEmpty())
@@ -986,7 +1106,42 @@ void CDobotDevice::createUserCoordinateV2(const CMessageRequest &msg)
     MyPointF6D coordinatePos;
     int iId = -1;
     ProjectResultInfo pictureInfo;
-    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, coordinatePos, iId, pictureInfo);
+
+    const double fQrCodeSqure = request.m_data.qrCodeSquare;
+    bool ret = m_pCameraDevice->createUserCoordinate(strCalibrateFile,robotPos, fQrCodeSqure,coordinatePos, iId, pictureInfo);
+
+    //从相机运行结果中获取用户坐标系，而不是从算法接口中获取******************************************************
+    CGetProjectRunResultResponseBean2 runResult;
+    parseProjectRunResult(pictureInfo.strResultData, pictureInfo.renderImg, runResult);
+    for (int i=0; i<runResult.data.size(); ++i)
+    {
+        auto& resbean = runResult.data[i];
+        const QString strType = resbean.moduleData->getType();
+        if (MacapriltagRunResult::isMine(strType))
+        {
+            auto* ptr = dynamic_cast<MacapriltagRunResult*>(resbean.moduleData.get());
+            if (ptr)
+            {
+                qDebug()<<"it has find the result of \""<<strType<<"\", the algorithm calcute result is:"
+                        <<"x="<<coordinatePos.x<<",y="<<coordinatePos.y<<",coordinatePos.z="<<coordinatePos.z
+                       <<",rx="<<coordinatePos.rx<<",ry="<<coordinatePos.ry<<",coordinatePos.rz="<<coordinatePos.rz
+                      <<",cid="<<iId<<"\r\n, We will use the camera's run results instead of the algorithm's calculated result";
+                coordinatePos.x = ptr->x;
+                coordinatePos.y = ptr->y;
+                coordinatePos.z = ptr->z;
+                coordinatePos.rx = ptr->rx;
+                coordinatePos.ry = ptr->ry;
+                coordinatePos.rz = ptr->rz;
+                iId = ptr->id;
+            }
+            else
+            {
+                qDebug()<<"has find the \""<<strType<<"\",but the pointer is not MacapriltagRunResult*";
+            }
+            break;
+        }
+    }
+    //***************************************************************************************************
 
     CCreateUserCoordinateV2ResultResponseResult result;
     result.m_data.x = coordinatePos.x;
@@ -999,6 +1154,8 @@ void CDobotDevice::createUserCoordinateV2(const CMessageRequest &msg)
     if (isReturnFrame)
     {
         result.m_data.frame = image2Base64Byte(pictureInfo.img);
+        result.m_data.width = pictureInfo.sz.width();
+        result.m_data.height = pictureInfo.sz.height();
     }
 
     if (!request.m_data.savePath.isEmpty())
@@ -1069,6 +1226,8 @@ void CDobotDevice::calibrateSampling(const CMessageRequest &msg)
     if (isReturnFrame)
     {
         result.m_data.frame = image2Base64Byte(pictureInfo.img);
+        result.m_data.width = pictureInfo.sz.width();
+        result.m_data.height = pictureInfo.sz.height();
     }
 
     if (!request.m_data.savePath.isEmpty())
@@ -1117,6 +1276,8 @@ void CDobotDevice::updateCalibrateSampling(const CMessageRequest &msg)
     if (isReturnFrame)
     {
         result.m_data.frame = image2Base64Byte(pictureInfo.img);
+        result.m_data.width = pictureInfo.sz.width();
+        result.m_data.height = pictureInfo.sz.height();
     }
 
     if (!request.m_data.savePath.isEmpty())
@@ -1185,12 +1346,7 @@ void CDobotDevice::getAllProjectList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getAllProjectList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CAllProjectListResponseResult result;
@@ -1254,6 +1410,8 @@ void CDobotDevice::getProjectShowImage(const CMessageRequest &msg)
         if (!img.isNull())
         {
             result.m_data.frame = image2Base64Byte(img);
+            result.m_data.width = img.width();
+            result.m_data.height = img.height();
             sendResponseSuccess(msg.getMsgUuid(), result);
         }
         else
@@ -1340,6 +1498,247 @@ void CDobotDevice::exportProject(const CMessageRequest &msg)
     else
     {
         sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+static bool getAllProjectList(HKSmartCameraDevice* pCameraDevice, QStringList& lstProjectName)
+{
+    QByteArray fileData;
+    bool ret = pCameraDevice->SetCommandValue("CommandProjectList");
+    ret = ret && pCameraDevice->SetEnumValueByString("FileSelector", "ProjectList");
+    ret = ret && pCameraDevice->FileAccessRead(fileData, "ProjectList");
+    if (!ret)
+    {
+        return false;
+    }
+
+    QJsonParseError err;
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
+    if (err.error != QJsonParseError::NoError || !jsonDoc.isObject())
+    {
+        qDebug()<<"the string is not json object,"<<err.errorString();
+        return false;
+    }
+
+    QJsonArray jsonArr = jsonDoc.object().value("data").toArray();
+    if (jsonArr.isEmpty())
+    {
+        qDebug()<<"has no project,status="<<jsonDoc.object().value("status").toString();
+    }
+    for(auto itr=jsonArr.begin();itr!=jsonArr.end();++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject obj = itr->toObject();
+        lstProjectName.append(obj.value("Name").toString());
+    }
+    return true;
+}
+static bool encryptProjectDobot(QString strFileZip)
+{
+    QFile tmpFile(strFileZip);
+    if (!tmpFile.open(QFile::WriteOnly|QFile::Append)){
+        return false;
+    }
+    char szBuf[8]={};
+    int64_t srcSize = tmpFile.size();
+    int64_t nowTime = QDateTime::currentMSecsSinceEpoch();
+    QString strPwd = QString("%1-%2-dobot123").arg(srcSize).arg(nowTime);
+    QByteArray pwdData = QCryptographicHash::hash(strPwd.toUtf8(), QCryptographicHash::Md5);
+    memcpy(szBuf, &srcSize, 8);
+    tmpFile.write(szBuf, 8);
+    memcpy(szBuf, &nowTime, 8);
+    tmpFile.write(szBuf, 8);
+    tmpFile.write(pwdData);
+    tmpFile.close();
+    return true;
+}
+static QString decryptProjectDobot(QString strFileZip)
+{
+    QFile tmpFile(strFileZip);
+    if (!tmpFile.open(QFile::ReadOnly)){
+        return "";
+    }
+    int64_t totalSize = tmpFile.size();
+    int64_t srcSize = totalSize-32;
+    if (srcSize<=0) {
+        return "";
+    }
+    tmpFile.seek(srcSize);
+    char szBuf[8]={};
+    int64_t tmpSrcSize=0;
+    int64_t nowTime=0;
+    QByteArray pwdDataTmp(16,0);
+    tmpFile.read(szBuf, 8);
+    memcpy(&tmpSrcSize, szBuf, 8);
+    tmpFile.read(szBuf, 8);
+    memcpy(&nowTime, szBuf, 8);
+    tmpFile.read(pwdDataTmp.data(), pwdDataTmp.size());
+
+    QString strPwd = QString("%1-%2-dobot123").arg(tmpSrcSize).arg(nowTime);
+    QByteArray pwdData = QCryptographicHash::hash(strPwd.toUtf8(), QCryptographicHash::Md5);
+    if (srcSize!=tmpSrcSize || pwdData!=pwdDataTmp){
+        return "";
+    }
+
+    tmpFile.seek(0);
+    QString strNewFile = QString("%1tmp%2.cmr")
+            .arg(CDobotDevice::getMyCachePath())
+            .arg(QDateTime::currentDateTime().toString("yyyyMMddhhmmsszzz"));
+    QFile tmpZipFile(strNewFile);
+    if (!tmpZipFile.open(QFile::WriteOnly|QFile::Truncate)){
+        return "";
+    }
+    tmpZipFile.write(tmpFile.read(srcSize));
+    tmpZipFile.close();
+    tmpFile.close();
+    return strNewFile;
+}
+
+void CDobotDevice::importProjectDobot(const CMessageRequest &msg)
+{
+    CImportProjectDobotRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QString strFileZip = decryptProjectDobot(request.m_data.file);
+    if (strFileZip.isEmpty()){
+        qDebug()<<"the project dobot file is not valid:"<<request.m_data.file;
+        sendResponseError(msg.getMsgUuid(), DT_ERR_OPEN_FILE);
+        return ;
+    }
+    if (!ZipManager::unzip(strFileZip, getMyCachePath())){
+        qDebug()<<"the project dobot file unzip fail";
+        QFile::remove(strFileZip);
+        sendResponseError(msg.getMsgUuid(), DT_ERR_OPEN_FILE);
+        return ;
+    }
+    QFile::remove(strFileZip);
+
+    QString strSolutionName;
+    CImportProjectDobotResponseResult result;
+    {//方案名称内容
+        QFile tmpFile(getMyCachePath()+"solutinname.txt");
+        if (!tmpFile.open(QFile::ReadOnly)){
+            sendResponseError(msg.getMsgUuid(), DT_ERR_READ_FILE, tmpFile.errorString());
+            return ;
+        }
+        strSolutionName = tmpFile.readAll();
+        tmpFile.close();
+        tmpFile.remove();
+    }
+    {//content内容
+        QFile tmpFile(getMyCachePath()+"content.txt");
+        if (!tmpFile.open(QFile::ReadOnly)){
+            sendResponseError(msg.getMsgUuid(), DT_ERR_READ_FILE, tmpFile.errorString());
+            return ;
+        }
+        result.m_data.content = tmpFile.readAll();
+        tmpFile.close();
+        tmpFile.remove();
+    }
+
+    QStringList lstProjectName;
+    if (!::getAllProjectList(m_pCameraDevice, lstProjectName))
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return;
+    }
+    result.m_data.success = true;
+    if (!lstProjectName.contains(strSolutionName))
+    {//导入相机方案
+        QFile tmpFile(getMyCachePath()+"vxcamera.scsln");
+        if (!tmpFile.open(QFile::ReadOnly)){
+            sendResponseError(msg.getMsgUuid(), DT_ERR_READ_FILE, tmpFile.errorString());
+            return ;
+        }
+        bool ret = m_pCameraDevice->SetEnumValueByString("FileSelector", "Solution");
+        ret = ret && m_pCameraDevice->FileAccessWrite(tmpFile, "Solution");
+        tmpFile.close();
+        tmpFile.remove();
+        if (!ret)
+        {
+            sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+            return;
+        }
+    }
+    else
+    {
+        result.m_data.success = false;
+        result.m_data.msg = "the project is exist";
+    }
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::exportProjectDobot(const CMessageRequest &msg)
+{
+    CExportProjectDobotRequestParams request;
+    request.fromJson(msg.getParams());
+    if (request.m_data.solutionName.isEmpty())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+
+    QStringList allFiles;
+    auto pfnDeleteFile = [](const QStringList& allFiles){
+        for (const QString& strFile : allFiles){
+            QFile::remove(strFile);
+        }
+    };
+    {//导出相机方案
+        QFile tmpFile(getMyCachePath()+"vxcamera.scsln");
+        if (!tmpFile.open(QFile::WriteOnly|QFile::Truncate)){
+            pfnDeleteFile(allFiles);
+            sendResponseError(msg.getMsgUuid(), DT_ERR_CREATE_FILE, tmpFile.errorString());
+            return ;
+        }
+        bool ret = m_pCameraDevice->SetEnumValueByString("FileSelector", "Solution");
+        ret = ret && m_pCameraDevice->SetStringValue("FileAccessName", request.m_data.solutionName);
+        ret = ret && m_pCameraDevice->FileAccessRead(tmpFile, "Solution");
+        if (!ret)
+        {
+            pfnDeleteFile(allFiles);
+            sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+            return;
+        }
+        tmpFile.close();
+        allFiles.append(tmpFile.fileName());
+    }
+    {//方案名称内容
+        QFile tmpFile(getMyCachePath()+"solutinname.txt");
+        if (!tmpFile.open(QFile::WriteOnly|QFile::Truncate)){
+            pfnDeleteFile(allFiles);
+            sendResponseError(msg.getMsgUuid(), DT_ERR_CREATE_FILE, tmpFile.errorString());
+            return ;
+        }
+        tmpFile.write(request.m_data.solutionName.toUtf8());
+        tmpFile.close();
+        allFiles.append(tmpFile.fileName());
+    }
+    {//content内容
+        QFile tmpFile(getMyCachePath()+"content.txt");
+        if (!tmpFile.open(QFile::WriteOnly|QFile::Truncate)){
+            pfnDeleteFile(allFiles);
+            sendResponseError(msg.getMsgUuid(), DT_ERR_CREATE_FILE, tmpFile.errorString());
+            return ;
+        }
+        tmpFile.write(request.m_data.content.toUtf8());
+        tmpFile.close();
+        allFiles.append(tmpFile.fileName());
+    }
+
+    QString strDesktop = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    strDesktop.append('/');
+    strDesktop.append(request.m_data.saveFile);
+    CExportProjectDobotResponseResult result;
+    if (ZipManager::zipFiles(allFiles, strDesktop))
+    {
+        pfnDeleteFile(allFiles);
+        encryptProjectDobot(strDesktop);
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_CREATE_FILE);
     }
 }
 
@@ -1504,6 +1903,42 @@ void CDobotDevice::switchProject(const CMessageRequest &msg)
     }
 }
 
+void CDobotDevice::setSwitchProjectTurnOn(const CMessageRequest &msg)
+{
+    CSetSwitchProjectTurnOnRequestParams request;
+    request.fromJson(msg.getParams());
+    if (request.m_data.solutionName.isEmpty())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+    bool ret = false;
+    if (request.m_data.turnOn)
+    {
+        ret = m_pCameraDevice->SetStringValue("DstOperateSolutionName", request.m_data.solutionName);
+        ret = ret && m_pCameraDevice->SetEnumValueByString("SolutionSwitchMode", "TriggerCommunication"); //开启通信触发
+        ret = ret && m_pCameraDevice->SetStringValue("SolutionSwitchString", "switch"); //设置通信字符串
+        ret = ret && m_pCameraDevice->SetStringValue("SolutionSwitchRetString", "ok"); //设置通信返回值
+        ret = ret && m_pCameraDevice->SetCommandValue("CommandSolutionSwitchParam");
+    }
+    else
+    {
+        ret = m_pCameraDevice->SetStringValue("SrcOperateSolutionName", request.m_data.solutionName);
+        ret = ret && m_pCameraDevice->SetEnumValueByString("SolutionSwitchMode", "off"); //设置方案切换模式关闭
+        ret = ret && m_pCameraDevice->SetCommandValue("CommandSolutionSwitchParam");
+    }
+
+    CSetSwitchProjectTurnOnResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
 void CDobotDevice::getAllSupportModuleList(const CMessageRequest &msg)
 {
     CAllSupportModuleRequestParams request;
@@ -1522,12 +1957,7 @@ void CDobotDevice::getAllSupportModuleList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getAllSupportModuleList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CAllSupportModuleResponseResult result;
@@ -1585,12 +2015,8 @@ void CDobotDevice::getProjectModuleList(const CMessageRequest &msg)
     //保存到文件方便查询吧
     if (request.m_data.isSaveDbgFile)
     {
-        QFile file("getProjectModuleList.json");
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        QString str=QString("getProjectModuleList.json");
+        saveCameraContent2File(str,fileData);
     }
 
     CProjectModuleResponseResult result;
@@ -1855,12 +2281,7 @@ void CDobotDevice::getModuleUIAllParameters(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("%1[%2].json").arg(request.m_data.moduleName).arg(request.m_data.moduleId);
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     QJsonParseError err;
@@ -2007,6 +2428,116 @@ void CDobotDevice::getModuleUIAllParameters(const CMessageRequest &msg)
     return ;
 }
 
+void CDobotDevice::getModuleUIParamValue(const CMessageRequest &msg)
+{
+    CGetModuleUIParamValueRequestParams request;
+    request.fromJson(msg.getParams());
+    if (request.m_data.moduleName.isEmpty())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+
+    CGetModuleUIParamValueResponseResult result;
+    if ("logic" == request.m_data.moduleName || "format" == request.m_data.moduleName)
+    {//这2个参数不给获取，海康也是这么做的，测试后发现，如果操作这2个数，容易出问题。
+        sendResponseSuccess(msg.getMsgUuid(), result);
+        return ;
+    }
+    for (auto itr=request.m_data.parameters.begin(); itr!=request.m_data.parameters.end(); ++itr)
+    {
+        CGetModuleUIParamValueResponseBean bean;
+        bean.paramName = itr->paramName;
+        bean.paramType = itr->paramType;
+        bean.parameters = UIParamBase::createBase(itr->paramType);
+        result.m_data.append(bean);
+
+        if (!m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId))
+        {
+            qDebug()<<"SetIntValue(ModuleID)fail,Unable to get parameter("<<itr->paramName<<") info:"<<m_pCameraDevice->getErrMessage();
+            continue;
+        }
+        if (UIParamInteger::isMine(itr->paramType))
+        {
+            auto pUI = static_cast<UIParamInteger*>(bean.parameters.get());
+            MV_VS_INTVALUE stIntValue;
+            pUI->success = m_pCameraDevice->GetIntValue(itr->paramName, stIntValue);
+            pUI->errmsg = m_pCameraDevice->getErrMessage();
+            if (pUI->success)
+            {
+                pUI->value = stIntValue.nCurValue;
+                pUI->min = stIntValue.nMin;
+                pUI->max = stIntValue.nMax;
+                pUI->inc = stIntValue.nInc;
+            }
+        }
+        else if (UIParamFloat::isMine(itr->paramType))
+        {
+            auto pUI = static_cast<UIParamFloat*>(bean.parameters.get());
+            MV_VS_FLOATVALUE stFloatValue;
+            pUI->success = m_pCameraDevice->GetFloatValue(itr->paramName, stFloatValue);
+            pUI->errmsg = m_pCameraDevice->getErrMessage();
+            if (pUI->success)
+            {
+                pUI->value = stFloatValue.fCurValue;
+                pUI->min = stFloatValue.fMin;
+                pUI->max = stFloatValue.fMax;
+            }
+        }
+        else if (UIParamBoolean::isMine(itr->paramType))
+        {
+            auto pUI = static_cast<UIParamBoolean*>(bean.parameters.get());
+            bool bAttrType;
+            pUI->success = m_pCameraDevice->GetBoolValue(itr->paramName, bAttrType);
+            pUI->errmsg = m_pCameraDevice->getErrMessage();
+            if (pUI->success)
+            {
+                pUI->value = bAttrType;
+            }
+        }
+        else if (UIParamString::isMine(itr->paramType))
+        {
+            auto pUI = static_cast<UIParamString*>(bean.parameters.get());
+            MV_VS_STRINGVALUE stringValue;
+            pUI->success = m_pCameraDevice->GetStringValue(itr->paramName, stringValue);
+            pUI->errmsg = m_pCameraDevice->getErrMessage();
+            if (pUI->success)
+            {
+                pUI->value = stringValue.strValue;
+            }
+        }
+        else if (UIParamEnumeration::isMine(itr->paramType))
+        {
+            auto pUI = static_cast<UIParamEnumeration*>(bean.parameters.get());
+            MV_VS_ENUMVALUE stEnumValue;
+            pUI->success = m_pCameraDevice->GetEnumValue(itr->paramName, stEnumValue);
+            pUI->errmsg = m_pCameraDevice->getErrMessage();
+            if (pUI->success)
+            {
+                pUI->value = stEnumValue.nCurValue;
+                for (unsigned int i = 0; i < stEnumValue.nSupportNum; ++i)
+                {
+                    pUI->supportValues.append(stEnumValue.nSupportValue[i]);
+                }
+            }
+        }
+        else if (UIParamCommand::isMine(itr->paramType))
+        {
+            auto pUI = static_cast<UIParamCommand*>(bean.parameters.get());
+            pUI->success = true;
+            pUI->errmsg = "";
+        }
+        else
+        {
+            qDebug()<<"unknow param type:"<<itr->paramType;
+        }
+    }
+
+    sendResponseSuccess(msg.getMsgUuid(), result);
+    return ;
+}
+
+
 void CDobotDevice::setModuleUIParameters(const CMessageRequest &msg)
 {
     CSetModuleUIParameterRequestParams request;
@@ -2018,42 +2549,42 @@ void CDobotDevice::setModuleUIParameters(const CMessageRequest &msg)
     for(auto itr=request.m_data.parameter.begin(); itr!=request.m_data.parameter.end(); ++itr)
     {
         CSetModuleUIParameterResponseBean bean;
-        bean.paramName = itr.value().paramName;
+        bean.paramName = itr->paramName;
 
         isSetIntId = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
         if (isSetIntId)
         {
-            if (UIParamInteger::isMine(itr.value().paramType))
+            if (UIParamInteger::isMine(itr->paramType))
             {
-                isSetIntId = m_pCameraDevice->SetIntValue(bean.paramName, itr.value().paramValue.toInt());
+                isSetIntId = m_pCameraDevice->SetIntValue(bean.paramName, itr->paramValue.toInt());
                 bean.success = isSetIntId;
                 bean.errmsg = m_pCameraDevice->getErrMessage();
             }
-            else if (UIParamFloat::isMine(itr.value().paramType))
+            else if (UIParamFloat::isMine(itr->paramType))
             {
-                isSetIntId = m_pCameraDevice->SetFloatValue(bean.paramName, itr.value().paramValue.toDouble());
+                isSetIntId = m_pCameraDevice->SetFloatValue(bean.paramName, itr->paramValue.toDouble());
                 bean.success = isSetIntId;
                 bean.errmsg = m_pCameraDevice->getErrMessage();
             }
-            else if (UIParamBoolean::isMine(itr.value().paramType))
+            else if (UIParamBoolean::isMine(itr->paramType))
             {
-                isSetIntId = m_pCameraDevice->SetBoolValue(bean.paramName, itr.value().paramValue.toBool());
+                isSetIntId = m_pCameraDevice->SetBoolValue(bean.paramName, itr->paramValue.toBool());
                 bean.success = isSetIntId;
                 bean.errmsg = m_pCameraDevice->getErrMessage();
             }
-            else if (UIParamString::isMine(itr.value().paramType))
+            else if (UIParamString::isMine(itr->paramType))
             {
-                isSetIntId = m_pCameraDevice->SetStringValue(bean.paramName, itr.value().paramValue.toString());
+                isSetIntId = m_pCameraDevice->SetStringValue(bean.paramName, itr->paramValue.toString());
                 bean.success = isSetIntId;
                 bean.errmsg = m_pCameraDevice->getErrMessage();
             }
-            else if (UIParamEnumeration::isMine(itr.value().paramType))
+            else if (UIParamEnumeration::isMine(itr->paramType))
             {
-                isSetIntId = m_pCameraDevice->SetEnumValue(bean.paramName, itr.value().paramValue.toInt());
+                isSetIntId = m_pCameraDevice->SetEnumValue(bean.paramName, itr->paramValue.toInt());
                 bean.success = isSetIntId;
                 bean.errmsg = m_pCameraDevice->getErrMessage();
             }
-            else if (UIParamCommand::isMine(itr.value().paramType))
+            else if (UIParamCommand::isMine(itr->paramType))
             {
                 isSetIntId = m_pCameraDevice->SetCommandValue(bean.paramName);
                 bean.success = isSetIntId;
@@ -2172,12 +2703,7 @@ void CDobotDevice::get25DCalibrateFileList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("get25DCalibrateFileList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CGet25DCalibrateFileListResponseResult result;
@@ -2224,15 +2750,58 @@ void CDobotDevice::get2DCalibrateFileList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("get2DCalibrateFileList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CGet2DCalibrateFileListResponseResult result;
+
+    QJsonParseError err;
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
+    if (err.error != QJsonParseError::NoError || !jsonDoc.isObject())
+    {
+        qDebug()<<"the string is not json object,"<<err.errorString();
+        sendResponseError(msg.getMsgUuid(), DT_ERR_CONTENT);
+        return ;
+    }
+    QJsonObject jsObject = jsonDoc.object();
+    QJsonArray arrFile = jsObject["model_list"].toArray();
+    result.m_data.currentFile = jsObject["current_model_name"].toString();
+    result.m_data.fileType = jsObject["upload_file_type"].toString();
+    result.m_data.maxCount = jsObject["max_model_num"].toInt();
+    for (int i=0; i<arrFile.size(); ++i)
+    {
+        QString str = arrFile.at(i).toObject()["model_name"].toString();
+        if (str.size()>0)
+        {
+            result.m_data.fileList.append(str);
+        }
+    }
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::getModuleCalibrateFileList(const CMessageRequest &msg)
+{
+    CGetModuleCalibrateFileListRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QByteArray fileData;
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "ModelMng");
+    ret = ret && m_pCameraDevice->FileAccessRead(fileData, "ModelMng");
+    if (!ret)
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return ;
+    }
+
+    //保存到文件方便查询吧
+    if (request.m_data.isSaveDbgFile)
+    {
+        QString str=QString("getModuleCalibrateFileList.json");
+        saveCameraContent2File(str,fileData);
+    }
+
+    CGetModuleCalibrateFileListResponseResult result;
 
     QJsonParseError err;
     QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
@@ -2296,6 +2865,25 @@ void CDobotDevice::delete2DCalibrateFile(const CMessageRequest &msg)
     }
 }
 
+void CDobotDevice::deleteModuleCalibrateFile(const CMessageRequest &msg)
+{
+    CDeleteModuleCalibrateFileRequestParams request;
+    request.fromJson(msg.getParams());
+
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue(request.m_data.paramName, request.m_data.fileName);
+
+    CDeleteModuleCalibrateFileResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
 void CDobotDevice::switch25DCalibrateFile(const CMessageRequest &msg)
 {
     CSwitch25DCalibrateFileRequestParams request;
@@ -2344,6 +2932,30 @@ void CDobotDevice::switch2DCalibrateFile(const CMessageRequest &msg)
     }
 }
 
+void CDobotDevice::switchModuleCalibrateFile(const CMessageRequest &msg)
+{
+    CSwitchModuleCalibrateFileRequestParams request;
+    request.fromJson(msg.getParams());
+    if (request.m_data.fileName.isEmpty())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue(request.m_data.paramName, request.m_data.fileName);
+
+    CSwitchModuleCalibrateFileResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+/*
 static void checkCalibrateTextValidYaml(YAML::Node& node)
 {
     if (!node.IsMap())
@@ -2392,7 +3004,7 @@ static bool isValidCalibrateYaml(const std::string& str)
         return false;
     }
     return true;
-}
+}*/
 void CDobotDevice::add25DCalibrateFile(const CMessageRequest &msg)
 {
     CAdd25DCalibrateFileRequestParams request;
@@ -2403,17 +3015,16 @@ void CDobotDevice::add25DCalibrateFile(const CMessageRequest &msg)
         return ;
     }
 
-    QFile file(request.m_data.fileFullPath);
+    QString strNewYamlFile = request.m_data.fileFullPath+".yml";
+    if (!m_pCameraDevice->Format2Yaml(request.m_data.fileFullPath, strNewYamlFile))
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return ;
+    }
+    QFile file(strNewYamlFile);
     if (!file.open(QFile::ReadOnly))
     {
         sendResponseError(msg.getMsgUuid(), DT_ERR_OPEN_FILE, file.errorString());
-        return ;
-    }
-    QByteArray yamlData = file.readAll();
-    file.seek(0);
-    if (!isValidCalibrateYaml(yamlData.toStdString()))
-    {
-        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
         return ;
     }
 
@@ -2431,6 +3042,9 @@ void CDobotDevice::add25DCalibrateFile(const CMessageRequest &msg)
     {
         sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
     }
+
+    file.close();
+    QFile::remove(strNewYamlFile);
 }
 
 void CDobotDevice::add25DCalibrateFileV2(const CMessageRequest &msg)
@@ -2448,20 +3062,35 @@ void CDobotDevice::add25DCalibrateFileV2(const CMessageRequest &msg)
         sendResponseError(msg.getMsgUuid(), DT_ERR_CONTENT);
         return ;
     }
-    if (!isValidCalibrateYaml(request.m_data.fileContent.toStdString()))
+
+    QFile file(fixSavePath(getMyCachePath())+QDateTime::currentDateTime().toString("yyyyMMddhhmmsszzz")+"-fmt.yml");
+    if (file.open(QFile::WriteOnly))
     {
-        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        file.write(request.m_data.fileContent.toUtf8());
+        file.close();
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_SAVE_FILE);
         return ;
     }
-
-    QByteArray fileArr = request.m_data.fileContent.toUtf8();
-    QBuffer buffer(&fileArr);
-    buffer.open(QBuffer::ReadOnly);
+    QString strNewYamlFile = file.fileName()+".yml";
+    if (!m_pCameraDevice->Format2Yaml(file.fileName(), strNewYamlFile))
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return ;
+    }
+    QFile newFile(strNewYamlFile);
+    if (!newFile.open(QFile::ReadOnly))
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_OPEN_FILE, file.errorString());
+        return ;
+    }
 
     bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
     ret = ret && m_pCameraDevice->SetStringValue("FileAccessName", request.m_data.fileName);
     ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "DlModel");
-    ret = ret && m_pCameraDevice->FileAccessWrite(buffer, "DlModel");
+    ret = ret && m_pCameraDevice->FileAccessWrite(newFile, "DlModel");
 
     CAdd25DCalibrateFileV2ResponseResult result;
     if (ret)
@@ -2472,6 +3101,10 @@ void CDobotDevice::add25DCalibrateFileV2(const CMessageRequest &msg)
     {
         sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
     }
+    file.close();
+    newFile.close();
+    QFile::remove(file.fileName());
+    QFile::remove(newFile.fileName());
 }
 
 void CDobotDevice::add2DCalibrateFile(const CMessageRequest &msg)
@@ -2497,6 +3130,39 @@ void CDobotDevice::add2DCalibrateFile(const CMessageRequest &msg)
     ret = ret && m_pCameraDevice->FileAccessWrite(file, "DlModel");
 
     CAdd2DCalibrateFileResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+void CDobotDevice::addModuleCalibrateFile(const CMessageRequest &msg)
+{
+    CAddModuleCalibrateFileRequestParams request;
+    request.fromJson(msg.getParams());
+    if (request.m_data.fileName.isEmpty())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+
+    QFile file(request.m_data.fileFullPath);
+    if (!file.open(QFile::ReadOnly))
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_OPEN_FILE, file.errorString());
+        return ;
+    }
+
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("FileAccessName", request.m_data.fileName);
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "DlModel");
+    ret = ret && m_pCameraDevice->FileAccessWrite(file, "DlModel");
+
+    CAddModuleCalibrateFileResponseResult result;
     if (ret)
     {
         sendResponseSuccess(msg.getMsgUuid(), result);
@@ -2594,6 +3260,36 @@ void CDobotDevice::add2DCalibrateFileV2(const CMessageRequest &msg)
     }
 }
 
+void CDobotDevice::addModuleCalibrateFileV2(const CMessageRequest &msg)
+{
+    CAddModuleCalibrateFileV2RequestParams request;
+    request.fromJson(msg.getParams());
+
+    QByteArray fileData = decryptCalibrateParamData(request.m_data.content);
+    if (request.m_data.fileName.isEmpty() ||
+            request.m_data.content.isEmpty() ||
+            fileData.isEmpty())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("FileAccessName", request.m_data.fileName);
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "DlModel");
+    ret = ret && m_pCameraDevice->FileAccessWrite(fileData, "DlModel");
+
+    CAddModuleCalibrateFileV2ResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
 void CDobotDevice::export2DCalibrateParamV2(const CMessageRequest &msg)
 {
     CExport2DCalibrateParamV2RequestParams request;
@@ -2662,12 +3358,7 @@ void CDobotDevice::getBaseImageHistroyImageInfoList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getBaseImageHistroyImageInfoList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(arrImageList);
-            file.close();
-        }
+        saveCameraContent2File(str,arrImageList);
     }
 
     CBaseImageHistoryImageInfoListResponseResult result;
@@ -2721,6 +3412,8 @@ void CDobotDevice::getBaseImageHistroyImageData(const CMessageRequest &msg)
         if (!img.isNull())
         {
             result.m_data.frame = image2Base64Byte(img);
+            result.m_data.width = img.width();
+            result.m_data.height = img.height();
             sendResponseSuccess(msg.getMsgUuid(), result);
         }
         else
@@ -2768,6 +3461,102 @@ void CDobotDevice::setBaseImageFromHistory(const CMessageRequest &msg)
     ret = ret && m_pCameraDevice->SetCommandValue("CommandSaveImgImportBaseImage");
 
     CSetBaseImageFromHistoryResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+void CDobotDevice::setBaseImageFromPC(const CMessageRequest &msg)
+{
+    CSetBaseImageFromPCRequestParams request;
+    request.fromJson(msg.getParams());
+    if (request.m_data.imageName.isEmpty())
+    {
+        qDebug()<<"imageName param is empty";
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+    QFile fImage(request.m_data.fileFullPath);
+    if (!fImage.open(QFile::ReadOnly))
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_FILE_NOT_EXIST);
+        return ;
+    }
+    QImage img = QImage::fromData(fImage.readAll());//图片的格式从内容中读取，不要从文件名读取，因为发现：图片实际格式与文件名不符合则无法读取情况
+    if (img.isNull())
+    {
+        qDebug()<<"can not read fileFullPath image";
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+    fImage.close();
+
+    QByteArray imgFileData;
+    const QSize szRender(2368,1760);
+    if (img.size() == szRender)
+    {
+        QBuffer buffer(&imgFileData);
+        buffer.open(QIODevice::WriteOnly);
+        img.save(&buffer,"jpg",100);
+        buffer.close();
+    }
+    else
+    {//图片尺寸不一样，则做裁剪
+        QImage renderImage(szRender,QImage::Format_RGB32);
+        QPainter painter(&renderImage);
+        if (img.width()<=szRender.width() && img.height()<=szRender.height())
+        {
+            double x = (szRender.width()-img.width())*0.5;
+            double y = (szRender.height()-img.height())*0.5;
+            painter.drawImage(QPointF(x,y), img);
+        }
+        else if (img.width()>szRender.width() && img.height()>szRender.height())
+        {
+            double x = (img.width()-szRender.width())*0.5;
+            double y = (img.height()-szRender.height())*0.5;
+            painter.drawImage(0,0,img,x,y,szRender.width(),szRender.height());
+        }
+        else if (img.width()>szRender.width() && img.height()<szRender.height())
+        {
+            double x = (img.width()-szRender.width())*0.5;
+            double y = (szRender.height()-img.height())*0.5;
+            painter.drawImage(0,y,img,x,0,szRender.width(),img.height());
+        }
+        else if (img.width()<szRender.width() && img.height()>szRender.height())
+        {
+            double x = (szRender.width()-img.width())*0.5;
+            double y = (img.height()-szRender.height())*0.5;
+            painter.drawImage(x,0,img,0,y,img.width(),szRender.height());
+        }
+        QBuffer buffer(&imgFileData);
+        buffer.open(QIODevice::WriteOnly);
+        renderImage.save(&buffer,"jpg",100);
+        buffer.close();
+
+        int iDot = request.m_data.imageName.lastIndexOf('.');
+        QString strNewFile;
+        if (iDot>=0)
+        {
+            strNewFile = request.m_data.imageName.left(iDot)+".jpg";
+            request.m_data.imageName = strNewFile;
+        }
+        else
+        {
+            request.m_data.imageName = request.m_data.imageName+".jpg";
+        }
+    }
+
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("FileAccessName", request.m_data.imageName);
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "BaseImage");
+    ret = ret && m_pCameraDevice->FileAccessWrite(imgFileData, "BaseImage");
+
+    CSetBaseImageFromPCResponseResult result;
     if (ret)
     {
         sendResponseSuccess(msg.getMsgUuid(), result);
@@ -2839,12 +3628,7 @@ void CDobotDevice::getOutputConfigProjectResultCustomLogicData(const CMessageReq
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getOutputConfigProjectResultCustomLogicData.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     QJsonParseError err;
@@ -2940,12 +3724,7 @@ void CDobotDevice::getOutputConfigProjectResultCustomLogicSupportList(const CMes
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getOutputConfigProjectResultCustomLogicSupportList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
     QJsonParseError err;
     QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
@@ -3000,6 +3779,170 @@ void CDobotDevice::getOutputConfigProjectResultCustomLogicSupportList(const CMes
     sendResponseSuccess(msg.getMsgUuid(), result);
 }
 
+void CDobotDevice::getToolSupportParamList(const CMessageRequest &msg)
+{
+    CGetToolSupportParamListRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QByteArray fileData;
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("FilterSubType", request.m_data.filterSubType); //对应UIJson中的ui_param_sub_type字段
+    ret = ret && m_pCameraDevice->SetEnumValue("SubModuleStyle", request.m_data.subModuleStyle); //对应UIJson中的ui_param_sub_style字段
+    ret = ret && m_pCameraDevice->SetCommandValue("CommandSubscribeSource");
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "SubscribeSource");
+    ret = ret && m_pCameraDevice->FileAccessRead(fileData, "SubscribeSource");
+    if (!ret)
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return ;
+    }
+
+    //保存到文件方便查询吧
+    if (request.m_data.isSaveDbgFile)
+    {
+        QString str=QString("getToolSupportParamList.json");
+        saveCameraContent2File(str,fileData);
+    }
+
+    QJsonParseError err;
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
+    if (err.error != QJsonParseError::NoError || !jsonDoc.isObject())
+    {
+        qDebug()<<"the string is not json object,"<<err.errorString();
+        sendResponseError(msg.getMsgUuid(), DT_ERR_CONTENT);
+        return ;
+    }
+    QJsonArray dataArray = jsonDoc.object()["data"].toArray();
+
+    CGetToolSupportParamListResponseResult result;
+    for (int i=0; i<dataArray.size(); ++i)
+    {
+        QJsonObject dataObject = dataArray.at(i).toObject();
+        int moduleId = dataObject["ModuleID"].toInt();
+        QString moduleName = dataObject["ModuleName"].toString();
+        QJsonArray subObjectArray = dataObject["SubObject"].toArray();
+        if (moduleName.isEmpty() || subObjectArray.isEmpty())
+        {
+            continue;
+        }
+
+        CGetToolSupportParamListResponseBean2 dataBean2D;
+        dataBean2D.moduleName = moduleName;
+        dataBean2D.moduleId = moduleId;
+        if (m_mapTranslateString.contains(moduleName))
+        {
+            dataBean2D.displayNameCN = m_mapTranslateString[moduleName].strDisplayNameCN;
+            dataBean2D.displayNameEN = m_mapTranslateString[moduleName].strDisplayNameEN;
+        }
+        else
+        {
+            dataBean2D.displayNameCN = moduleName;
+            dataBean2D.displayNameEN = moduleName;
+        }
+
+        for (int j=0; j<subObjectArray.size(); ++j)
+        {
+            QJsonObject subObject = subObjectArray.at(j).toObject();
+            QString pubName = subObject["PubName"].toString();
+            if (pubName.isEmpty())
+            {
+                continue;
+            }
+            CGetToolSupportParamListResponseBean1 paramBean;
+            paramBean.paramName = pubName;
+            if (m_mapTranslateString.contains(pubName))
+            {
+                paramBean.paramNameCN = m_mapTranslateString[pubName].strDisplayNameCN;
+                paramBean.paramNameEN = m_mapTranslateString[pubName].strDisplayNameEN;
+            }
+            else
+            {
+                paramBean.paramNameCN = pubName;
+                paramBean.paramNameEN = pubName;
+            }
+            dataBean2D.subParamList.append(paramBean);
+        }
+        result.m_data.append(dataBean2D);
+    }
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::getToolParamValue(const CMessageRequest &msg)
+{
+    CGetToolParamValueRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QByteArray fileData;
+    bool ret = m_pCameraDevice->SetIntValue("SubModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("SubModuleName", request.m_data.paramName);
+    ret = ret && m_pCameraDevice->SetEnumValue("SubModuleStyle", request.m_data.subModuleStyle);//对应UIJson中的ui_param_sub_style字段
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "FileSubscribeData");
+    ret = ret && m_pCameraDevice->FileAccessRead(fileData, "FileSubscribeData");
+    if (!ret)
+    {
+        qDebug()<<request.m_data.paramName<<" error:"<<m_pCameraDevice->getErrMessage();
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return ;
+    }
+
+    //保存到文件方便查询吧
+    if (request.m_data.isSaveDbgFile)
+    {
+        QString str=QString("getToolParamValue-%1.json").arg(request.m_data.paramName);
+        saveCameraContent2File(str,fileData);
+    }
+
+    QJsonParseError err;
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
+    if (err.error != QJsonParseError::NoError || !jsonDoc.isObject())
+    {
+        qDebug()<<"the string is not json object,"<<err.errorString();
+        sendResponseError(msg.getMsgUuid(), DT_ERR_CONTENT);
+        return ;
+    }
+
+    CGetToolParamValueResponseResult result;
+    QJsonObject dataObj = jsonDoc.object()["data"].toObject();
+    result.m_data.moduleName = dataObj["PubModuleName"].toString();
+    result.m_data.moduleId = dataObj["PubModuleID"].toInt();
+    if (result.m_data.moduleName.size()>0 && m_mapTranslateString.contains(result.m_data.moduleName))
+    {
+        result.m_data.displayNameCN = m_mapTranslateString[result.m_data.moduleName].strDisplayNameCN;
+        result.m_data.displayNameEN = m_mapTranslateString[result.m_data.moduleName].strDisplayNameEN;
+    }
+    result.m_data.paramName = dataObj["PubParamName"].toString();
+    if (result.m_data.paramName.size()>0 && m_mapTranslateString.contains(result.m_data.paramName))
+    {
+        result.m_data.paramNameCN = m_mapTranslateString[result.m_data.paramName].strDisplayNameCN;
+        result.m_data.paramNameEN = m_mapTranslateString[result.m_data.paramName].strDisplayNameEN;
+    }
+
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::setToolParamValue(const CMessageRequest &msg)
+{
+    CSetToolParamValueRequestParams request;
+    request.fromJson(msg.getParams());
+
+    bool ret = m_pCameraDevice->SetIntValue("SubModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("SubModuleName", request.m_data.paramName);
+    ret = ret && m_pCameraDevice->SetEnumValue("SubModuleStyle", request.m_data.subModuleStyle);//对应UIJson中的ui_param_sub_style字段
+    ret = ret && m_pCameraDevice->SetIntValue("PubModuleID", request.m_data.parameter.moduleId);
+    ret = ret && m_pCameraDevice->SetStringValue("PubModuleName", request.m_data.parameter.paramName);
+    ret = ret && m_pCameraDevice->SetCommandValue("CommandSubscription");
+
+    CSetToolParamValueResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
 void CDobotDevice::get2DInputPointSupportList(const CMessageRequest &msg)
 {
     CGet2DInputPointSupportListRequestParams request;
@@ -3025,12 +3968,7 @@ void CDobotDevice::get2DInputPointSupportList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("get2DInputPointSupportList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     QJsonParseError err;
@@ -3127,12 +4065,7 @@ void CDobotDevice::get2DInputPointValue(const CMessageRequest &msg)
         if (request.m_data.isSaveDbgFile)
         {
             QString str=QString("get2DInputPointValue-%1.json").arg(itr->first);
-            QFile file(str);
-            if (file.open(QFile::WriteOnly|QFile::Truncate))
-            {
-                file.write(fileData);
-                file.close();
-            }
+            saveCameraContent2File(str,fileData);
         }
 
         QJsonParseError err;
@@ -3309,12 +4242,7 @@ void CDobotDevice::getSupportRoiInfo(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getSupportRoiInfo.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CGetSupportRoiInfoResponseResult result;
@@ -3447,12 +4375,7 @@ void CDobotDevice::getRoiModule(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getRoiModule.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CGetRoiModuleResponseResult result;
@@ -3488,12 +4411,7 @@ void CDobotDevice::getRoiTemplate(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getRoiTemplate.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     CGetRoiTemplateResponseResult result;
@@ -3656,12 +4574,7 @@ void CDobotDevice::getRoiContourPoints(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getRoiContourPoints.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     qDebug()<<"getRoiContourPoints:"<<fileData;
@@ -3830,12 +4743,7 @@ void CDobotDevice::getCameraCalibratePoint(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getCameraCalibratePoint.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     qDebug()<<"getCameraCalibratePoint:"<<fileData;
@@ -3963,12 +4871,7 @@ void CDobotDevice::getOutputResultSupportList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getOutputResultSupportList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     QJsonParseError err;
@@ -4054,12 +4957,7 @@ void CDobotDevice::getOutputResultDataList(const CMessageRequest &msg)
     if (request.m_data.isSaveDbgFile)
     {
         QString str=QString("getOutputResultDataList.json");
-        QFile file(str);
-        if (file.open(QFile::WriteOnly|QFile::Truncate))
-        {
-            file.write(fileData);
-            file.close();
-        }
+        saveCameraContent2File(str,fileData);
     }
 
     QJsonParseError err;
@@ -4232,6 +5130,261 @@ void CDobotDevice::setOutputResultDataList(const CMessageRequest &msg)
     ret = ret && m_pCameraDevice->FileAccessWrite(fileData, "AlgoPrivate");
 
     CSetOutputResultDataListResponseResult result;
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+void CDobotDevice::getToolTransformation(const CMessageRequest &msg)
+{
+    CToolTransformationRequestParams request;
+    request.fromJson(msg.getParams());
+
+    const double oldPoint[6]={request.m_data.oldPoint.x,request.m_data.oldPoint.y,request.m_data.oldPoint.z,
+                              request.m_data.oldPoint.rx,request.m_data.oldPoint.ry,request.m_data.oldPoint.rz};
+    const double newPoint[6]={request.m_data.newPoint.x,request.m_data.newPoint.y,request.m_data.newPoint.z,
+                              request.m_data.newPoint.rx,request.m_data.newPoint.ry,request.m_data.newPoint.rz};
+    double outPoint[16]={0.0};
+    m_pCameraDevice->GetToolTransformation(oldPoint,newPoint,outPoint);
+
+    CToolTransformationResultResponseResult result;
+    for(unsigned int i=0; i<sizeof(outPoint)/sizeof(outPoint[0]);++i)
+    {
+        result.m_data.append(outPoint[i]);
+    }
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::getAxisTransformation(const CMessageRequest &msg)
+{
+    CAxisTransformationRequestParams request;
+    request.fromJson(msg.getParams());
+
+    if (request.m_data.oldPoints.size()<4 || request.m_data.newPoints.size()<4)
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_INVALID_PARAMS);
+        return ;
+    }
+
+    double oldPoint[4][6]={};
+    for(int i=0; i<request.m_data.oldPoints.size()&&i<4; ++i)
+    {
+        const auto& pt = request.m_data.oldPoints[i];
+        oldPoint[i][0] = pt.x;
+        oldPoint[i][1] = pt.y;
+        oldPoint[i][2] = pt.z;
+        oldPoint[i][3] = pt.rx;
+        oldPoint[i][4] = pt.ry;
+        oldPoint[i][5] = pt.rz;
+    }
+    double newPoint[4][6]={};
+    for(int i=0; i<request.m_data.newPoints.size()&&i<4; ++i)
+    {
+        const auto& pt = request.m_data.newPoints[i];
+        newPoint[i][0] = pt.x;
+        newPoint[i][1] = pt.y;
+        newPoint[i][2] = pt.z;
+        newPoint[i][3] = pt.rx;
+        newPoint[i][4] = pt.ry;
+        newPoint[i][5] = pt.rz;
+    }
+    double outPoint[16]={0.0};
+    m_pCameraDevice->GetAxisTransformation(oldPoint,newPoint,outPoint);
+
+    CAxisTransformationResultResponseResult result;
+    for(unsigned int i=0; i<sizeof(outPoint)/sizeof(outPoint[0]);++i)
+    {
+        result.m_data.append(outPoint[i]);
+    }
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::getReusePoint(const CMessageRequest &msg)
+{
+    CReusePointRequestParams request;
+    request.fromJson(msg.getParams());
+
+    const double oldPoint[6]={request.m_data.srcPoint.x,request.m_data.srcPoint.y,request.m_data.srcPoint.z,
+                              request.m_data.srcPoint.rx,request.m_data.srcPoint.ry,request.m_data.srcPoint.rz};
+    double outPoint[6]={0.0};
+    m_pCameraDevice->GetReusePoint(oldPoint,request.m_data.toolRT,request.m_data.coordRT,outPoint);
+
+    CReusePointResultResponseResult result;
+    result.m_data.x = outPoint[0];
+    result.m_data.y = outPoint[1];
+    result.m_data.z = outPoint[2];
+    result.m_data.rx = outPoint[3];
+    result.m_data.ry = outPoint[4];
+    result.m_data.rz = outPoint[5];
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::getDeviceUserId(const CMessageRequest &msg)
+{
+    GetDeviceUserIdRequestParams request;
+    request.fromJson(msg.getParams());
+
+    MV_VS_STRINGVALUE stStringValue;
+    bool ret = m_pCameraDevice->GetStringValue("DeviceUserID", stStringValue);
+    GetDeviceUserIdResponseResult result;
+    if (ret)
+    {
+        result.m_data.value = stStringValue.strValue;
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+void CDobotDevice::setDeviceUserId(const CMessageRequest &msg)
+{
+    SetDeviceUserIdRequestParams request;
+    request.fromJson(msg.getParams());
+
+    SetDeviceUserIdResponseResult result;
+    bool ret = m_pCameraDevice->SetStringValue("DeviceUserID", request.m_data.value);
+    if (ret)
+    {
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+void CDobotDevice::updateFirmware(const CMessageRequest &msg)
+{
+    UpdateFirmwareRequestParams request;
+    request.fromJson(msg.getParams());
+
+    if (m_bIsUpdateFirmware.load())
+    {
+        sendResponseError(msg.getMsgUuid(), DT_ERR_UPDATE_FIRMWARE_AGAIN);
+        return;
+    }
+    m_bIsUpdateFirmware.store(true);
+    m_bIsUpdateFirmwareResult.store(true); //只要进入升级状态，结果默认为true
+
+    const QString strFile = request.m_data.file;
+    const QString strMsgUuid = msg.getMsgUuid();
+    QThread* pThread = new QThread();
+    QObject* pObj = new QObject(this);
+    connect(pThread, &QThread::started, pObj, [this, pObj,strFile,strMsgUuid]{
+        UpdateFirmwareResponseResult result;
+        sendResponseSuccess(strMsgUuid, result);
+        qDebug()<<"begin update firmware.....";
+        bool ret = m_pCameraDevice->updateFirmware(strFile);
+        qDebug()<<"end udpate firmware,nRet="<<m_pCameraDevice->getErrCode()
+               <<",errmsg="<<m_pCameraDevice->getErrMessage();
+        m_bIsUpdateFirmwareResult.store(ret);
+        m_bIsUpdateFirmware.store(false);
+
+        pObj->deleteLater();
+    });
+    connect(pThread, &QThread::finished, pThread, &QThread::deleteLater);
+    pThread->start();
+}
+
+void CDobotDevice::getUpdateFirmwareProgress(const CMessageRequest &msg)
+{
+    GetUpdateFirmwareProgressRequestParams request;
+    request.fromJson(msg.getParams());
+
+    unsigned int nProgress = 0;
+    GetUpdateFirmwareProgressResponseResult result;
+    bool ret = m_pCameraDevice->getUpdateFirmwareProgress(nProgress);
+    if (ret)
+    {
+        result.m_data.progress = nProgress;
+        result.m_data.status = m_bIsUpdateFirmwareResult.load();
+        sendResponseSuccess(msg.getMsgUuid(), result);
+    }
+    else
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+    }
+}
+
+void CDobotDevice::getDlocrdetectFilterConfig(const CMessageRequest &msg)
+{
+    CGetDlocrdetectFilterConfigRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QByteArray fileData;
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    //ret = ret && m_pCameraDevice->SetCommandValue("DlocrdetectFilterConfig");
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "CharacterFilter");
+    ret = ret && m_pCameraDevice->FileAccessRead(fileData, "CharacterFilter");
+    if (!ret)
+    {
+        sendResponseError(msg.getMsgUuid(), m_pCameraDevice->getErrCode(), m_pCameraDevice->getErrMessage());
+        return ;
+    }
+
+    //保存到文件方便查询吧
+    if (request.m_data.isSaveDbgFile)
+    {
+        QString str=QString("getDlocrdetectFilterConfig.json");
+        saveCameraContent2File(str,fileData);
+    }
+
+    QJsonParseError err;
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(fileData, &err);
+    if (err.error != QJsonParseError::NoError || !jsonDoc.isObject())
+    {
+        qDebug()<<"the string is not json object,"<<err.errorString();
+        sendResponseError(msg.getMsgUuid(), DT_ERR_CONTENT);
+        return ;
+    }
+
+    CGetDlocrdetectFilterConfigResponseResult result;
+    QJsonObject jsObject = jsonDoc.object();
+    QJsonArray arrFile = jsObject["FilterParameter"].toArray();
+    for (int i=0; i<arrFile.size(); ++i)
+    {
+        QJsonObject cfgData = arrFile.at(i).toObject();
+        CGetDlocrdetectFilterConfigResponseBean bean;
+        bean.key = cfgData["key"].toString();
+        bean.value = cfgData["value"].toString();
+        result.m_data.append(bean);
+    }
+    sendResponseSuccess(msg.getMsgUuid(), result);
+}
+
+void CDobotDevice::setDlocrdetectFilterConfig(const CMessageRequest &msg)
+{
+    CSetDlocrdetectFilterConfigRequestParams request;
+    request.fromJson(msg.getParams());
+
+    QJsonArray arrFilterParameter;
+    for (auto itr=request.m_data.parameter.begin(); itr!=request.m_data.parameter.end(); ++itr)
+    {
+        QJsonObject obj;
+        obj.insert("key",itr->key);
+        obj.insert("value",itr->value);
+        arrFilterParameter.append(obj);
+    }
+    QJsonObject jsObject;
+    jsObject.insert("FilterParameter",arrFilterParameter);
+    QJsonDocument doc(jsObject);
+    QByteArray fileData = doc.toJson();
+
+    MV_VS_INTVALUE stParamT,stParamR;
+    memset(&stParamT, 0, sizeof(MV_VS_INTVALUE));
+    memset(&stParamR, 0, sizeof(MV_VS_INTVALUE));
+    bool ret = m_pCameraDevice->SetIntValue("ModuleID", request.m_data.moduleId);
+    ret = ret && m_pCameraDevice->SetEnumValueByString("FileSelector", "CharacterFilter");
+    ret = ret && m_pCameraDevice->FileAccessWrite(fileData, "CharacterFilter");
+    ret = ret && m_pCameraDevice->SetCommandValue("DlocrdetectFilterConfig");
+    CSetDlocrdetectFilterConfigResponseResult result;
     if (ret)
     {
         sendResponseSuccess(msg.getMsgUuid(), result);

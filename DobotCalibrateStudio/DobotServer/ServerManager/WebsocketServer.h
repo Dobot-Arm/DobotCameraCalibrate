@@ -6,6 +6,7 @@
 #include <QWebSocketServer>
 #include <QWebSocket>
 #include <QSet>
+#include <QTimer>
 
 class CWebsocketServer : public IServerInterface
 {
@@ -21,6 +22,7 @@ public:
     void sendMsgToClient(const CMessageResponse& msg) Q_DECL_OVERRIDE;
 
 private slots:
+    bool slotCheckListening();
     void slotNewConnection();
     void slotCloseServer();
     void slotClientRecvMsg(const QString& strMsg);
@@ -33,6 +35,7 @@ private:
 
 private:
     QWebSocketServer* m_pServer;
+    QTimer* m_pTimerListen;
     QSet<QWebSocket*> m_allClient;
 };
 

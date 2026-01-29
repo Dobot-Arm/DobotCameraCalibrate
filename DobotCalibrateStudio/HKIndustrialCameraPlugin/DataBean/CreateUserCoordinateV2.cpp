@@ -8,7 +8,7 @@ bool CCreateUserCoordinateV2RequestBean::fromJson(const QJsonObject &obj)
         calibrateFileContent = obj["calibrateFileContent"].toString();
     }
     if (obj.contains("type") && obj["type"].isString()) type = obj["type"].toString();
-    if ("xml" != type || "yml" != type || "json" != type)
+    if ("xml" != type && "yml" != type && "json" != type)
     {
         type = "json";
     }
@@ -23,6 +23,8 @@ bool CCreateUserCoordinateV2RequestBean::fromJson(const QJsonObject &obj)
     if (obj.contains("rx") && obj["rx"].isDouble()) rx = obj["rx"].toDouble();
     if (obj.contains("ry") && obj["ry"].isDouble()) ry = obj["ry"].toDouble();
     if (obj.contains("rz") && obj["rz"].isDouble()) rz = obj["rz"].toDouble();
+
+    if (obj.contains("qrCodeSquare") && obj["qrCodeSquare"].isDouble()) qrCodeSquare = obj["qrCodeSquare"].toDouble(50.0);
 
     return true;
 }
@@ -41,6 +43,7 @@ QJsonObject CCreateUserCoordinateV2RequestBean::toJsonObject() const
     obj.insert("rx",rx);
     obj.insert("ry",ry);
     obj.insert("rz",rz);
+    obj.insert("qrCodeSquare",qrCodeSquare);
     return obj;
 }
 

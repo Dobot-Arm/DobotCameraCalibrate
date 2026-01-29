@@ -4,7 +4,7 @@ bool CGenerateCalibrateFileV2RequestBean::fromJson(const QJsonObject &obj)
 {
     if (obj.contains("identify") && obj["identify"].isString()) identify = obj["identify"].toString();
     if (obj.contains("type") && obj["type"].isString()) type = obj["type"].toString();
-    if ("xml" != type || "yml" != type || "json" != type)
+    if ("xml" != type && "yml" != type && "json" != type)
     {
         type = "json";
     }

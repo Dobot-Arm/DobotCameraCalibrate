@@ -29,7 +29,7 @@ public:
     bool openCamera(const QString& strConnect, const QString& strPwd);
     void closeCamera();
     bool startVideo();
-    bool startTestVideo();
+    bool startTestVideo(int iModuleId);
     void stopVideo();
     bool takePhoto(ProjectResultInfo& info);
     bool takeBasePhoto(ProjectResultInfo& info, int iModuleId);
@@ -37,7 +37,8 @@ public:
     bool calcGetCalibrateResult(MyPointF6D& avgValue, MyPointF6D& maxValue);
     bool generateCalibrateFile(const QString& strSaveFileFullName);
     bool createUserCoordinate(const QString& strCalibrateFile, const MyPointF6D& robotPos,
-                              MyPointF6D& coordinatePos, int& iId, ProjectResultInfo& picture);
+                              const double qrCodeSquare,MyPointF6D& coordinatePos, int& iId,
+                              ProjectResultInfo& picture);
     bool beginCalibrate();
     int endCalibrate();
     bool calibrateSampling(const MyPointF6D& robotPos, ProjectResultInfo& picture);
@@ -81,6 +82,31 @@ public:
     bool FileAccessWrite(const QByteArray& fileData, const char* pszDevFile);
     bool FileAccessWrite(QIODevice& file, const char* pszDevFile);
 
+    /*
+     * 升级固件，获取固件当前升级进度
+    */
+    bool updateFirmware(const QString& strFile); //会阻塞直到升级完毕
+    bool getUpdateFirmwareProgress(unsigned int& nProgress);
+
+    /*
+    **功能：将文件内容格式化为海康相机能够识别的yaml格式文件，同时也是为了校验文件格式是否合法
+    **参数：strSrcFile-原文件，可以是 json格式、yml格式、xml格式
+    **     strDestFile-新的文件，通常格式是yml
+    **     strErrMsg-返回错误信息，
+    **返回值：true表示成功，false表示失败
+    */
+    bool Format2Yaml(const QString& strSrcFile, const QString& strDestFile);
+
+    /*功能：点复用算法计算相关接口
+    **说明：偷个懒，函数参数要注意数组的严格控制，内部就不处理了，认为参数是对的。
+    **    1. oldPoint长度为6，分别表示x,y,z,Rx,Ry,Rz
+    **    2. toolRT和coordRT长度为16，分别表示4*4的矩阵
+    */
+    bool GetToolTransformation(const double oldPoint[6], const double newPoint[6], double outPoint[16]);
+    bool GetAxisTransformation(const double oldPoint[4][6], const double newPoint[4][6],double outPoint[16]);
+    bool GetReusePoint(const double oldPoint[6], const QList<double>& toolRT,
+                    const QList<double>& coordRT,double outPoint[6]);
+
 private:
     friend void HKSmartVideoCallback(const ImageDataSmart* pData, void* pArgs);
 
@@ -98,6 +124,12 @@ private:
 
     int m_iErrCode;
     QString m_strErrMsg;
+
+    /*搜索相机时，可能会在这一刻搜索不到，但是下一刻却又能搜索到，而前端会按照搜索不到来判断相机是否掉线，为了减少这种误报，所以加个缓存。
+     * 当连续超过3次搜索不到，则认为是相机掉线了
+    */
+    QList<CameraInfo> m_cameraCacheInfo;
+    int m_iSearchFailTryTimes = 0;
 
     /*******************************************************/
     QLibrary m_lib;
@@ -137,7 +169,7 @@ private:
     HKICD_FUNC_PTR_DEF(int,StartCamera)(void* pHandler, void(*pfnCallback)(const ImageDataSmart* pData, void* pArgs), void* pArgs);
     HKICD_FUNC_PTR_MEMBER(StartCamera);
 
-    HKICD_FUNC_PTR_DEF(int,StartTestCamera)(void* pHandler, void(*pfnCallback)(const ImageDataSmart* pData, void* pArgs), void* pArgs);
+    HKICD_FUNC_PTR_DEF(int,StartTestCamera)(void* pHandler, int iModuleId, void(*pfnCallback)(const ImageDataSmart* pData, void* pArgs), void* pArgs);
     HKICD_FUNC_PTR_MEMBER(StartTestCamera);
 
     HKICD_FUNC_PTR_DEF(void,StopCamera)(void* pHandler);
@@ -174,7 +206,7 @@ private:
     HKICD_FUNC_PTR_MEMBER(GenerateCalibrateFile);
 
     HKICD_FUNC_PTR_DEF(int,CreateUserCoordinate)(void* pHandler, const char* pszFileFullName,
-                                           const MyPointSmart* pRobotPos,
+                                           const MyPointSmart* pRobotPos,const double qrCodeSquare,
                                            MyPointSmart* pUserCoordinate, int* pId,
                                            void(*pfnCallback)(const ImageDataSmart* pData, void* pArgs), void* pArgs);
     HKICD_FUNC_PTR_MEMBER(CreateUserCoordinate);
@@ -221,8 +253,29 @@ private:
     HKICD_FUNC_PTR_DEF(int,FileAccessWrite)(void* pHandler, MV_VS_FILE_ACCESS* pstFileAccess);
     HKICD_FUNC_PTR_MEMBER(FileAccessWrite);
 
+    HKICD_FUNC_PTR_DEF(int,UpdateFirmware)(void* pHandler, const char* pszFile);
+    HKICD_FUNC_PTR_MEMBER(UpdateFirmware);
+    HKICD_FUNC_PTR_DEF(int,GetUpdateFirmwareProgress)(void* pHandler, unsigned int* pProgress);
+    HKICD_FUNC_PTR_MEMBER(GetUpdateFirmwareProgress);
+
     HKICD_FUNC_PTR_DEF(int,GetGenICamXML)(void* pHandler, unsigned char* pData, unsigned int nDataSize, unsigned int* pnDataLen);
     HKICD_FUNC_PTR_MEMBER(GetGenICamXML);
+
+    HKICD_FUNC_PTR_DEF(int,FormatToYaml)(const char* pszSrcFile, const char* pszDestFile, char* pszErrMsg,int iSize);
+    HKICD_FUNC_PTR_MEMBER(FormatToYaml);
+
+
+    HKICD_FUNC_PTR_DEF(void,GetToolTransformation)(const double P1_old[6], const double P1_new[6], double outPoint[16]);
+    HKICD_FUNC_PTR_MEMBER(GetToolTransformation);
+    HKICD_FUNC_PTR_DEF(void,GetAxisTransformation)(const double P1_old[6], const double P2_old[6],
+                                                    const double P3_old[6], const double P4_old[6],
+                                                    const double P1_new[6], const double P2_new[6],
+                                                    const double P3_new[6], const double P4_new[6],
+                                                    double outPoint[16]);
+    HKICD_FUNC_PTR_MEMBER(GetAxisTransformation);
+    HKICD_FUNC_PTR_DEF(void,GetReusePoint)(const double P_old[6], const double toolRT[16], int iRT1Count,
+                                            const double coordRT[16], int iRT2Count, double outPoint[6]);
+    HKICD_FUNC_PTR_MEMBER(GetReusePoint);
 };
 
 #endif // HKSMARTCAMERADEVICE_H

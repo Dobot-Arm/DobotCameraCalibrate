@@ -28,7 +28,8 @@ public:
     virtual bool calcGetCalibrateResult(MyPointF6D& avgValue, MyPointF6D& maxValue) = 0;
     virtual bool generateCalibrateFile(const QString& strSaveFileFullName) = 0;
     virtual bool createUserCoordinate(const QString& strCalibrateFile, const MyPointF6D& robotPos,
-                                      MyPointF6D& coordinatePos, int& iId, QImage& retImg) = 0;
+                                      const double qrCodeSquare,MyPointF6D& coordinatePos,
+                                      int& iId, QImage& retImg) = 0;
     virtual bool beginCalibrate() = 0;
     virtual int endCalibrate() = 0; //返回标定点个数
     virtual bool calibrateSampling(const MyPointF6D& robotPos, QImage& retImg) = 0;

@@ -10,13 +10,16 @@ CWebsocketServer::CWebsocketServer(QObject *parent) : IServerInterface(parent)
     m_pServer->setProxy(QNetworkProxy::NoProxy);
     connect(m_pServer, &QWebSocketServer::newConnection, this, &CWebsocketServer::slotNewConnection);
     connect(m_pServer, &QWebSocketServer::closed, this, &CWebsocketServer::slotCloseServer);
-    connect(m_pServer, &QWebSocketServer::closed, this, &CWebsocketServer::slotCloseServer);
     connect(m_pServer, &QWebSocketServer::acceptError, this, [this](QAbstractSocket::SocketError socketError){
         qCritical()<<"ws server acceptError:"<<socketError<<","<<m_pServer->errorString();
     });
     connect(m_pServer, &QWebSocketServer::serverError, this, [this](QWebSocketProtocol::CloseCode closeCode){
         qCritical()<<"ws server serverError:"<<closeCode<<","<<m_pServer->errorString();
     });
+
+    m_pTimerListen = new QTimer(this);
+    m_pTimerListen->setInterval(2000);
+    connect(m_pTimerListen, &QTimer::timeout, this, &CWebsocketServer::slotCheckListening);
 }
 
 CWebsocketServer::~CWebsocketServer()
@@ -38,6 +41,21 @@ QWebSocket* CWebsocketServer::convertToClient(QString strSenderId)
 
 bool CWebsocketServer::listen()
 {
+    m_pTimerListen->start();
+    return slotCheckListening();
+}
+
+void CWebsocketServer::close()
+{
+    m_pTimerListen->stop();
+    if (m_pServer->isListening())
+    {
+        m_pServer->close();
+    }
+}
+
+bool CWebsocketServer::slotCheckListening()
+{
     bool bOk = false;
     if (!m_pServer->isListening())
     {
@@ -48,14 +66,6 @@ bool CWebsocketServer::listen()
         }
     }
     return bOk;
-}
-
-void CWebsocketServer::close()
-{
-    if (m_pServer->isListening())
-    {
-        m_pServer->close();
-    }
 }
 
 void CWebsocketServer::slotNewConnection()

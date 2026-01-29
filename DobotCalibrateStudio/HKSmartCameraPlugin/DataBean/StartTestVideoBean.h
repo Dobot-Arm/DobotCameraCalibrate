@@ -13,6 +13,7 @@ struct CStartTestVideoRequestBean : public CJsonMessage
     QString identify; //相机标识，在连接打开相机时用到这个参数
     bool returnFrame = false; //是否返回图像帧数据
     bool returnResult = false; //true表示返回运行结果数据
+    int moduleId = 0; //模块id值
 };
 
 class CStartTestVideoRequestParams : public CJsonMessage

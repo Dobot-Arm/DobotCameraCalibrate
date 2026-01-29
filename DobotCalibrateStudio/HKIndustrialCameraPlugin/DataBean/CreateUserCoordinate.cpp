@@ -19,6 +19,7 @@ bool CCreateUserCoordinateRequestBean::fromJson(const QJsonObject &obj)
     if (obj.contains("ry") && obj["ry"].isDouble()) ry = obj["ry"].toDouble();
     if (obj.contains("rz") && obj["rz"].isDouble()) rz = obj["rz"].toDouble();
 
+    if (obj.contains("qrCodeSquare") && obj["qrCodeSquare"].isDouble()) qrCodeSquare = obj["qrCodeSquare"].toDouble();
     return true;
 }
 
@@ -35,6 +36,7 @@ QJsonObject CCreateUserCoordinateRequestBean::toJsonObject() const
     obj.insert("rx",rx);
     obj.insert("ry",ry);
     obj.insert("rz",rz);
+    obj.insert("qrCodeSquare",qrCodeSquare);
     return obj;
 }
 

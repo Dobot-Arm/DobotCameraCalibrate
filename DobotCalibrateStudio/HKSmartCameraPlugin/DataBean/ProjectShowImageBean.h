@@ -35,6 +35,8 @@ struct CProjectShowImageResponseBean : public CJsonMessage
     QJsonObject toJsonObject()const Q_DECL_OVERRIDE;
 
     QString frame;
+    int width;
+    int height;
 };
 
 class CProjectShowImageResponseResult : public CJsonMessage

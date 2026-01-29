@@ -36,6 +36,8 @@ struct CBaseImageHistroyImageDataResponseBean : public CJsonMessage
     QJsonObject toJsonObject()const Q_DECL_OVERRIDE;
 
     QString frame;
+    int width;
+    int height;
 };
 
 class CBaseImageHistroyImageDataResponseResult : public CJsonMessage

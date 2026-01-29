@@ -1,4 +1,4 @@
-QT += gui network xml
+QT += gui network xml gui-private
 
 TEMPLATE = lib
 CONFIG += c++11
@@ -24,6 +24,8 @@ SOURCES += \
     DataBean/Add2DCalibrateFileBean.cpp \
     DataBean/Add2DCalibrateFileV2Bean.cpp \
     DataBean/AddModuleBean.cpp \
+    DataBean/AddModuleCalibrateFileBean.cpp \
+    DataBean/AddModuleCalibrateFileV2Bean.cpp \
     DataBean/AllSupportModuleBean.cpp \
     DataBean/BaseImageHistoryImageInfoListBean.cpp \
     DataBean/BaseImageHistroyImageDataBean.cpp \
@@ -42,11 +44,13 @@ SOURCES += \
     DataBean/Delete25DCalibrateFileBean.cpp \
     DataBean/Delete2DCalibrateFileBean.cpp \
     DataBean/DeleteModuleBean.cpp \
+    DataBean/DeleteModuleCalibrateFileBean.cpp \
     DataBean/DeleteProjectBean.cpp \
     DataBean/EndCalibrateBean.cpp \
     DataBean/Export2DCalibrateParamBean.cpp \
     DataBean/Export2DCalibrateParamV2Bean.cpp \
     DataBean/ExportProjectBean.cpp \
+    DataBean/ExportProjectDobotBean.cpp \
     DataBean/GenerateCalibrateFile.cpp \
     DataBean/GenerateCalibrateFileV2.cpp \
     DataBean/Get25DCalibrateFileListBean.cpp \
@@ -57,8 +61,11 @@ SOURCES += \
     DataBean/GetCameraCalibratePointBean.cpp \
     DataBean/GetCommunicateEnableBean.cpp \
     DataBean/GetCurrentProjectRunningStateBean.cpp \
+    DataBean/GetDlocrdetectFilterConfigBean.cpp \
+    DataBean/GetModuleCalibrateFileListBean.cpp \
     DataBean/GetModuleShowNameBean.cpp \
     DataBean/GetModuleUIAllParameterBean.cpp \
+    DataBean/GetModuleUIParamValueBean.cpp \
     DataBean/GetOneKeyAdjustRunStateBean.cpp \
     DataBean/GetOutputCfgPrjResultCategoryBean.cpp \
     DataBean/GetOutputCfgPrjResultCustomLogicData.cpp \
@@ -69,9 +76,13 @@ SOURCES += \
     DataBean/GetRoiContourPointsBean.cpp \
     DataBean/GetRoiModuleBean.cpp \
     DataBean/GetRoiTemplateBean.cpp \
+    DataBean/GetSetDeviceUserId.cpp \
     DataBean/GetSupportRoiInfoBean.cpp \
     DataBean/GetTemplateRoiMatchPointBean.cpp \
+    DataBean/GetToolParamValueBean.cpp \
+    DataBean/GetToolSupportParamListBean.cpp \
     DataBean/ImportProjectBean.cpp \
+    DataBean/ImportProjectDobotBean.cpp \
     DataBean/OpenCameraBean.cpp \
     DataBean/AllProjectListBean.cpp \
     DataBean/ProjectModuleBean.cpp \
@@ -79,18 +90,25 @@ SOURCES += \
     DataBean/RenameProjectBean.cpp \
     DataBean/ResetProjectRunResultBean.cpp \
     DataBean/ResetTemplateRoiMatchPointBean.cpp \
+    DataBean/ReuseTransform.cpp \
     DataBean/RoiType/AnnularRoiData.cpp \
     DataBean/RoiType/CircleRoiData.cpp \
     DataBean/RoiType/UnknowRoiData.cpp \
+    DataBean/RunResult/BaseImageRunResult.cpp \
     DataBean/RunResult/BaseRunResult.cpp \
     DataBean/RunResult/DiameterMeasureRunResult.cpp \
     DataBean/RunResult/DlocrDetectRunResult.cpp \
+    DataBean/RunResult/FixtureRunResult.cpp \
+    DataBean/RunResult/FormatRunResult.cpp \
     DataBean/RunResult/GreyAreaRunResult.cpp \
     DataBean/RunResult/IdeModuleRunResult.cpp \
+    DataBean/RunResult/ImageCountRunResult.cpp \
     DataBean/RunResult/ImageExistRunResult.cpp \
     DataBean/RunResult/MacapriltagRunResult.cpp \
     DataBean/RunResult/MatchCalibRunResult.cpp \
     DataBean/RunResult/MatchLocateRunResult.cpp \
+    DataBean/RunResult/SpeckleCountRunResult.cpp \
+    DataBean/RunResult/SpeckleExistRunResult.cpp \
     DataBean/RunResult/WidthMeasureRunResult.cpp \
     DataBean/SaveAsProjectBean.cpp \
     DataBean/SaveProjectBean.cpp \
@@ -98,9 +116,11 @@ SOURCES += \
     DataBean/Set2DInputPointValueBean.cpp \
     DataBean/SetBaseImageFromCurrentBean.cpp \
     DataBean/SetBaseImageFromHistoryBean.cpp \
+    DataBean/SetBaseImageFromPCBean.cpp \
     DataBean/SetCameraCalibratePointBean.cpp \
     DataBean/SetCameraPwdBean.cpp \
     DataBean/SetCommunicateEnableBean.cpp \
+    DataBean/SetDlocrdetectFilterConfigBean.cpp \
     DataBean/SetIpConfigBean.cpp \
     DataBean/SetModuleShowNameBean.cpp \
     DataBean/SetModuleUIParameterBean.cpp \
@@ -109,11 +129,14 @@ SOURCES += \
     DataBean/SetRoiModuleBean.cpp \
     DataBean/SetRoiTemplateBean.cpp \
     DataBean/SetTemplateRoiMatchPointBean.cpp \
+    DataBean/SetToolParamValueBean.cpp \
     DataBean/StartTestVideoBean.cpp \
     DataBean/StartVideoBean.cpp \
+    DataBean/StartVideoImageBean.cpp \
     DataBean/StartVideoV2Bean.cpp \
     DataBean/StopVideoBean.cpp \
     DataBean/Switch2DCalibrateFileBean.cpp \
+    DataBean/SwitchModuleCalibrateFileBean.cpp \
     DataBean/SwitchProjectBean.cpp \
     DataBean/Switch25DCalibrateFileBean.cpp \
     DataBean/TakeBasePhotoBean.cpp \
@@ -126,6 +149,7 @@ SOURCES += \
     DataBean/UIParamType/UIParamInteger.cpp \
     DataBean/UIParamType/UIParamString.cpp \
     DataBean/UIParamType/UIParamUnknow.cpp \
+    DataBean/UpdateFirmware.cpp \
     DobotDevice.cpp \
     DobotDeviceFunc.cpp \
     DobotDeviceFuncMapper.cpp \
@@ -133,7 +157,9 @@ SOURCES += \
     HKSmartCameraPlugin.cpp \
     DataBean/RoiType/BaseRoiData.cpp \
     DataBean/RoiType/BoxRoiData.cpp \
-    DataBean/RoiType/PolygonRoiData.cpp
+    DataBean/RoiType/PolygonRoiData.cpp \
+    DataBean/SetSwitchProjectTurnOnBean.cpp \
+    ZipManager.cpp
 
 HEADERS += \
     CameraInfo.h \
@@ -142,6 +168,8 @@ HEADERS += \
     DataBean/Add2DCalibrateFileBean.h \
     DataBean/Add2DCalibrateFileV2Bean.h \
     DataBean/AddModuleBean.h \
+    DataBean/AddModuleCalibrateFileBean.h \
+    DataBean/AddModuleCalibrateFileV2Bean.h \
     DataBean/AllSupportModuleBean.h \
     DataBean/BaseImageHistoryImageInfoListBean.h \
     DataBean/BaseImageHistroyImageDataBean.h \
@@ -154,10 +182,12 @@ HEADERS += \
     DataBean/Delete25DCalibrateFileBean.h \
     DataBean/Delete2DCalibrateFileBean.h \
     DataBean/DeleteModuleBean.h \
+    DataBean/DeleteModuleCalibrateFileBean.h \
     DataBean/DeleteProjectBean.h \
     DataBean/Export2DCalibrateParamBean.h \
     DataBean/Export2DCalibrateParamV2Bean.h \
     DataBean/ExportProjectBean.h \
+    DataBean/ExportProjectDobotBean.h \
     DataBean/Get25DCalibrateFileListBean.h \
     DataBean/Get2DCalibrateFileListBean.h \
     DataBean/Get2DInputPointSupportListBean.h \
@@ -165,8 +195,11 @@ HEADERS += \
     DataBean/GetCameraCalibratePointBean.h \
     DataBean/GetCommunicateEnableBean.h \
     DataBean/GetCurrentProjectRunningStateBean.h \
+    DataBean/GetDlocrdetectFilterConfigBean.h \
+    DataBean/GetModuleCalibrateFileListBean.h \
     DataBean/GetModuleShowNameBean.h \
     DataBean/GetModuleUIAllParameterBean.h \
+    DataBean/GetModuleUIParamValueBean.h \
     DataBean/GetOneKeyAdjustRunStateBean.h \
     DataBean/GetOutputCfgPrjResultCategoryBean.h \
     DataBean/GetOutputCfgPrjResultCustomLogicData.h \
@@ -177,36 +210,49 @@ HEADERS += \
     DataBean/GetRoiContourPointsBean.h \
     DataBean/GetRoiModuleBean.h \
     DataBean/GetRoiTemplateBean.h \
+    DataBean/GetSetDeviceUserId.h \
     DataBean/GetSupportRoiInfoBean.h \
     DataBean/GetTemplateRoiMatchPointBean.h \
+    DataBean/GetToolParamValueBean.h \
+    DataBean/GetToolSupportParamListBean.h \
     DataBean/ImportProjectBean.h \
     DataBean/AllProjectListBean.h \
+    DataBean/ImportProjectDobotBean.h \
     DataBean/ProjectModuleBean.h \
     DataBean/ProjectShowImageBean.h \
     DataBean/RenameProjectBean.h \
     DataBean/ResetProjectRunResultBean.h \
     DataBean/ResetTemplateRoiMatchPointBean.h \
+    DataBean/ReuseTransform.h \
     DataBean/RoiType/AnnularRoiData.h \
     DataBean/RoiType/CircleRoiData.h \
     DataBean/RoiType/UnknowRoiData.h \
+    DataBean/RunResult/BaseImageRunResult.h \
     DataBean/RunResult/BaseRunResult.h \
     DataBean/RunResult/DiameterMeasureRunResult.h \
     DataBean/RunResult/DlocrDetectRunResult.h \
+    DataBean/RunResult/FixtureRunResult.h \
+    DataBean/RunResult/FormatRunResult.h \
     DataBean/RunResult/GreyAreaRunResult.h \
     DataBean/RunResult/IdeModuleRunResult.h \
+    DataBean/RunResult/ImageCountRunResult.h \
     DataBean/RunResult/ImageExistRunResult.h \
     DataBean/RunResult/MacapriltagRunResult.h \
     DataBean/RunResult/MatchCalibRunResult.h \
     DataBean/RunResult/MatchLocateRunResult.h \
+    DataBean/RunResult/SpeckleCountRunResult.h \
+    DataBean/RunResult/SpeckleExistRunResult.h \
     DataBean/RunResult/WidthMeasureRunResult.h \
     DataBean/SaveAsProjectBean.h \
     DataBean/SaveProjectBean.h \
     DataBean/Set2DInputPointValueBean.h \
     DataBean/SetBaseImageFromCurrentBean.h \
     DataBean/SetBaseImageFromHistoryBean.h \
+    DataBean/SetBaseImageFromPCBean.h \
     DataBean/SetCameraCalibratePointBean.h \
     DataBean/SetCameraPwdBean.h \
     DataBean/SetCommunicateEnableBean.h \
+    DataBean/SetDlocrdetectFilterConfigBean.h \
     DataBean/SetModuleShowNameBean.h \
     DataBean/SetModuleUIParameterBean.h \
     DataBean/SetOutputCfgPrjResultCustomLogicData.h \
@@ -214,9 +260,12 @@ HEADERS += \
     DataBean/SetRoiModuleBean.h \
     DataBean/SetRoiTemplateBean.h \
     DataBean/SetTemplateRoiMatchPointBean.h \
+    DataBean/SetToolParamValueBean.h \
     DataBean/StartTestVideoBean.h \
+    DataBean/StartVideoImageBean.h \
     DataBean/StartVideoV2Bean.h \
     DataBean/Switch2DCalibrateFileBean.h \
+    DataBean/SwitchModuleCalibrateFileBean.h \
     DataBean/SwitchProjectBean.h \
     DataBean/Switch25DCalibrateFileBean.h \
     DataBean/TakeBasePhotoBean.h \
@@ -228,10 +277,12 @@ HEADERS += \
     DataBean/UIParamType/UIParamInteger.h \
     DataBean/UIParamType/UIParamString.h \
     DataBean/UIParamType/UIParamUnknow.h \
+    DataBean/UpdateFirmware.h \
     DataBeanHeaderConfig.h \
     DataBean/RoiType/BaseRoiData.h \
     DataBean/RoiType/BoxRoiData.h \
     DataBean/RoiType/PolygonRoiData.h \
+    DataBean/SetSwitchProjectTurnOnBean.h \
     SmartCameraStruct.h \
     DataBean/BeginCalibrateBean.h \
     DataBean/CalcGetCalibrateResult.h \
@@ -251,7 +302,8 @@ HEADERS += \
     DataBean/TakePhotoBean.h \
     DobotDevice.h \
     HKSmartCameraDevice.h \
-    HKSmartCameraPlugin.h
+    HKSmartCameraPlugin.h \
+    ZipManager.h
 
 
 ###############################################################

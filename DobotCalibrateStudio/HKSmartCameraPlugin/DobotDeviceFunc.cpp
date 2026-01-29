@@ -22,6 +22,8 @@ static struct RunResultTempData
     QString strResultRefCN;
     QString strResultRefEN;
 }g_RunResultTempData;
+static QString parsePInfo(const QJsonArray& arrPInfo, BaseImageRunResult* pRunResult, const QImage& renderImage=QImage());
+static QString parsePInfo(const QJsonArray& arrPInfo, FormatRunResult* pRunResult, const QImage& renderImage=QImage());
 static QString parsePInfo(const QJsonArray& arrPInfo, MacapriltagRunResult* pRunResult, const QImage& renderImage=QImage());
 static QString parsePInfo(const QJsonArray& arrPInfo, ImageExistRunResult* pRunResult, const QImage& renderImage=QImage());
 static QString parsePInfo(const QJsonArray& arrPInfo, DiameterMeasureRunResult* pRunResult, const QImage& renderImage=QImage());
@@ -31,6 +33,10 @@ static QString parsePInfo(const QJsonArray& arrPInfo, DlocrDetectRunResult* pRun
 static QString parsePInfo(const QJsonArray& arrPInfo, GreyAreaRunResult* pRunResult, const QImage& renderImage=QImage());
 static QString parsePInfo(const QJsonArray& arrPInfo, MatchCalibRunResult* pRunResult, const QImage& renderImage=QImage());
 static QString parsePInfo(const QJsonArray& arrPInfo, MatchLocateRunResult* pRunResult, const QImage& renderImage=QImage());
+static QString parsePInfo(const QJsonArray& arrPInfo, FixtureRunResult* pRunResult, const QImage& renderImage=QImage());
+static QString parsePInfo(const QJsonArray& arrPInfo, ImageCountRunResult* pRunResult, const QImage& renderImage=QImage());
+static QString parsePInfo(const QJsonArray& arrPInfo, SpeckleExistRunResult* pRunResult, const QImage& renderImage=QImage());
+static QString parsePInfo(const QJsonArray& arrPInfo, SpeckleCountRunResult* pRunResult, const QImage& renderImage=QImage());
 
 void CDobotDevice::parseProjectRunResult(const QString &strResultInfo, const QHash<int,QImage>& renderImage,
                                          CGetProjectRunResultResponseBean2 &result)
@@ -72,29 +78,37 @@ void CDobotDevice::parseProjectRunResult(const QString &strResultInfo, const QHa
         bean.moduleId = iModuleId;
         bean.result = "NG"; //默认给个NG，在内部计算判断
         bean.moduleData = sptr;
-        if (MacapriltagRunResult::isMine(strModuleName))
+        if (BaseImageRunResult::isMine(strModuleName))
+        {//baseimage基准图模块
+            bean.result = parsePInfo(arrPInfo, (BaseImageRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
+        }
+        else if (FormatRunResult::isMine(strModuleName))
+        {//format结果输出模块
+            bean.result = parsePInfo(arrPInfo, (FormatRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
+        }
+        else if (MacapriltagRunResult::isMine(strModuleName))
         {//2.5D标定模块
-            bean.result = parsePInfo(arrPInfo, (MacapriltagRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (MacapriltagRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (ImageExistRunResult::isMine(strModuleName))
         {//图像有无模块
-            bean.result = parsePInfo(arrPInfo, (ImageExistRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (ImageExistRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (DiameterMeasureRunResult::isMine(strModuleName))
         {//直径测量模块
-            bean.result = parsePInfo(arrPInfo, (DiameterMeasureRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (DiameterMeasureRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (WidthMeasureRunResult::isMine(strModuleName))
         {//宽度测量模块
-            bean.result = parsePInfo(arrPInfo, (WidthMeasureRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (WidthMeasureRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (IdeModuleRunResult::isMine(strModuleName))
         {//码识别模块
-            bean.result = parsePInfo(arrPInfo, (IdeModuleRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (IdeModuleRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (DlocrDetectRunResult::isMine(strModuleName))
         {//字符识别模块
-            bean.result = parsePInfo(arrPInfo, (DlocrDetectRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (DlocrDetectRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (GreyAreaRunResult::isMine(strModuleName))
         {//灰度面积模块
@@ -102,11 +116,27 @@ void CDobotDevice::parseProjectRunResult(const QString &strResultInfo, const QHa
         }
         else if (MatchCalibRunResult::isMine(strModuleName))
         {//2D标定模块
-            bean.result = parsePInfo(arrPInfo, (MatchCalibRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (MatchCalibRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else if (MatchLocateRunResult::isMine(strModuleName))
         {//2D定位
-            bean.result = parsePInfo(arrPInfo, (MatchLocateRunResult*)bean.moduleData.get());
+            bean.result = parsePInfo(arrPInfo, (MatchLocateRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
+        }
+        else if (FixtureRunResult::isMine(strModuleName))
+        {//位置修正
+            bean.result = parsePInfo(arrPInfo, (FixtureRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
+        }
+        else if (ImageCountRunResult::isMine(strModuleName))
+        {//图案计数
+            bean.result = parsePInfo(arrPInfo, (ImageCountRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
+        }
+        else if (SpeckleExistRunResult::isMine(strModuleName))
+        {//斑点有无
+            bean.result = parsePInfo(arrPInfo, (SpeckleExistRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
+        }
+        else if (SpeckleCountRunResult::isMine(strModuleName))
+        {//斑点计数
+            bean.result = parsePInfo(arrPInfo, (SpeckleCountRunResult*)bean.moduleData.get(),renderImage.value(iModuleId));
         }
         else
         {
@@ -117,6 +147,137 @@ void CDobotDevice::parseProjectRunResult(const QString &strResultInfo, const QHa
         bean.resultRefEN = g_RunResultTempData.strResultRefEN;
         result.data.append(bean);
     }
+}
+
+static QString parsePInfo(const QJsonArray& arrPInfo, BaseImageRunResult* pRunResult, const QImage& renderImage)
+{
+    Q_UNUSED(renderImage)
+    QString strResult = "";
+    int SINGLE_status = 0;
+    int SINGLE_param_status = 0;
+
+    for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject infoObj = itr->toObject();
+
+        const int nValueStatus = infoObj.value("nValueStatus").toInt(0); //算法运行的状态（运行正常为1，否则为0）
+        const QString strParamName = infoObj.value("strParamName").toString();
+        const QString strResultTypeName = infoObj.value("strResultTypeName").toString();
+
+        if ("BOX1_match_box_cx" == strParamName || "BOX1_match_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchBox.centerX = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_match_box_cy" == strParamName || "BOX1_match_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchBox.centerY = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_match_box_w" == strParamName || "BOX1_match_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchBox.width = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_match_box_h" == strParamName || "BOX1_match_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchBox.height = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_match_box_ang" == strParamName || "BOX1_match_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchBox.angle = arrValue[0].toDouble(0);
+            pRunResult->matchAng = pRunResult->matchBox.angle;
+        }
+        else if ("POINT_match_point_x" == strParamName || "POINT_match_point_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchX = arrValue[0].toDouble(0);
+        }
+        else if ("POINT_match_point_y" == strParamName || "POINT_match_point_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->matchY = arrValue[0].toDouble(0);
+        }
+        else if ("SINGLE_match_score" == strParamName || "SINGLE_match_score" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->score = arrValue[0].toDouble(0);
+        }
+        //运行状态结果
+        else if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
+        {
+            SINGLE_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status" == strParamName || "SINGLE_param_status" == strResultTypeName)
+        {
+            SINGLE_param_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status_string" == strParamName || "SINGLE_param_status_string" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) strResult = arrValue[0].toObject().value("strValue").toString("NG");
+        }
+        //运行结果判断依据
+        else if ("SINGLE_rst_string_cn" == strParamName || "SINGLE_rst_string_cn" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefCN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefCN = "";
+        }
+        else if ("SINGLE_rst_string_en" == strParamName || "SINGLE_rst_string_en" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefEN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefEN = "";
+        }
+    }
+    if (strResult.isEmpty())
+    {
+        if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";
+        else strResult = "NG";
+    }
+    return strResult;
+}
+
+static QString parsePInfo(const QJsonArray& arrPInfo, FormatRunResult* pRunResult, const QImage& renderImage)
+{
+    Q_UNUSED(renderImage)
+    QString strResult = "";
+    int SINGLE_status = 0;
+    int SINGLE_param_status = 0;
+    for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject infoObj = itr->toObject();
+
+        const int nValueStatus = infoObj.value("nValueStatus").toInt(0); //算法运行的状态（运行正常为1，否则为0）
+        const QString strParamName = infoObj.value("strParamName").toString();
+        const QString strResultTypeName = infoObj.value("strResultTypeName").toString();
+
+        //运行状态结果
+        if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
+        {
+            SINGLE_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status" == strParamName || "SINGLE_param_status" == strResultTypeName)
+        {
+            SINGLE_param_status = nValueStatus;
+        }
+        else if ("SINGLE_obj_string" == strParamName || "SINGLE_obj_string" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) pRunResult->resultValue = arrValue[0].toObject().value("strValue").toString();
+        }
+    }
+    if (strResult.isEmpty())
+    {
+        if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";
+        else strResult = "NG";
+    }
+    return strResult;
 }
 
 static QString parsePInfo(const QJsonArray& arrPInfo, MacapriltagRunResult* pRunResult, const QImage& renderImage)
@@ -942,6 +1103,8 @@ static QString parsePInfo(const QJsonArray& arrPInfo, GreyAreaRunResult* pRunRes
     if (!renderImage.isNull())
     {
         pRunResult->frame = CDobotDevice::image2Base64Byte(renderImage);
+        pRunResult->width = renderImage.width();
+        pRunResult->height = renderImage.height();
     }
     for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
     {
@@ -1193,6 +1356,20 @@ static QString parsePInfo(const QJsonArray& arrPInfo, MatchLocateRunResult* pRun
     QString strResult = "";
     int SINGLE_status = 0;
     int SINGLE_param_status = 0;
+
+    QVector<double> vcPrecision;
+    QVector<double> vcPhysicX;
+    QVector<double> vcPhysicY;
+    QVector<double> vcPhysicAng;
+    QVector<double> vcOffsetX;
+    QVector<double> vcOffsetY;
+    QVector<double> vcOffsetTheta;
+    QVector<double> vcMatchCenterX;
+    QVector<double> vcMatchCenterY;
+    QVector<double> vcMatchCenterW;
+    QVector<double> vcMatchCenterH;
+    QVector<double> vcMatchCenterAng;
+
     for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
     {
         if (!itr->isObject()) continue;
@@ -1205,32 +1382,163 @@ static QString parsePInfo(const QJsonArray& arrPInfo, MatchLocateRunResult* pRun
         if ("SINGLE_pixel_scale" == strParamName || "SINGLE_pixel_scale" == strResultTypeName)
         {
             QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
-            if (arrValue.size()>0) pRunResult->precision = arrValue[0].toDouble(0);
+            for (int i=0;i<arrValue.size();++i) vcPrecision.append(arrValue[i].toDouble());
         }
         else if ("POINT2_world_point_x" == strParamName || "POINT2_world_point_x" == strResultTypeName)
         {
             QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
-            if (arrValue.size()>0) pRunResult->physicalX = arrValue[0].toDouble(0);
+            for (int i=0;i<arrValue.size();++i) vcPhysicX.append(arrValue[i].toDouble());
         }
         else if ("POINT2_world_point_y" == strParamName || "POINT2_world_point_y" == strResultTypeName)
         {
             QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
-            if (arrValue.size()>0) pRunResult->physicalY = arrValue[0].toDouble(0);
+            for (int i=0;i<arrValue.size();++i) vcPhysicY.append(arrValue[i].toDouble());
+        }
+        else if ("SINGLE_world_point_angle" == strParamName || "SINGLE_world_point_angle" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcPhysicAng.append(arrValue[i].toDouble());
         }
         else if ("POINT3_world_point_x_diff" == strParamName || "POINT3_world_point_x_diff" == strResultTypeName)
         {
             QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
-            if (arrValue.size()>0) pRunResult->offsetX = arrValue[0].toDouble(0);
+            for (int i=0;i<arrValue.size();++i) vcOffsetX.append(arrValue[i].toDouble());
         }
         else if ("POINT3_world_point_y_diff" == strParamName || "POINT3_world_point_y_diff" == strResultTypeName)
         {
             QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
-            if (arrValue.size()>0) pRunResult->offsetY = arrValue[0].toDouble(0);
+            for (int i=0;i<arrValue.size();++i) vcOffsetY.append(arrValue[i].toDouble());
         }
         else if ("SINGLE_world_point_angle_diff" == strParamName || "SINGLE_world_point_angle_diff" == strResultTypeName)
         {
             QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
-            if (arrValue.size()>0) pRunResult->offsetTheta = arrValue[0].toDouble(0);
+            for (int i=0;i<arrValue.size();++i) vcOffsetTheta.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_cx" == strParamName || "BOX1_match_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchCenterX.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_cy" == strParamName || "BOX1_match_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchCenterY.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_w" == strParamName || "BOX1_match_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchCenterW.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_h" == strParamName || "BOX1_match_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchCenterH.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_ang" == strParamName || "BOX1_match_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchCenterAng.append(arrValue[i].toDouble());
+        }
+        //运行状态结果
+        else if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
+        {
+            SINGLE_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status" == strParamName || "SINGLE_param_status" == strResultTypeName)
+        {
+            SINGLE_param_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status_string" == strParamName || "SINGLE_param_status_string" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) strResult = arrValue[0].toObject().value("strValue").toString("NG");
+        }
+        //运行结果判断依据
+        else if ("SINGLE_rst_string_cn" == strParamName || "SINGLE_rst_string_cn" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefCN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefCN = "";
+        }
+        else if ("SINGLE_rst_string_en" == strParamName || "SINGLE_rst_string_en" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefEN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefEN = "";
+        }
+    }
+    auto iMaxSize = calcMaxValue(vcPrecision.size(),vcPhysicX.size(),vcPhysicY.size(),vcOffsetX.size(),vcOffsetY.size(),vcOffsetTheta.size());
+
+    for (int i=0; i<iMaxSize; ++i)
+    {
+        MatchLocateRunResult::DataResult codeValue;
+        if (vcPrecision.size()>i) codeValue.precision = vcPrecision[i];
+        if (vcPhysicX.size()>i) codeValue.physicalX = vcPhysicX[i];
+        if (vcPhysicY.size()>i) codeValue.physicalY = vcPhysicY[i];
+        if (vcPhysicY.size()>i) codeValue.physicalAng = vcPhysicAng[i];
+        if (vcOffsetX.size()>i) codeValue.offsetX = vcOffsetX[i];
+        if (vcOffsetY.size()>i) codeValue.offsetY = vcOffsetY[i];
+        if (vcOffsetTheta.size()>i) codeValue.offsetTheta = vcOffsetTheta[i];
+        if (vcMatchCenterX.size()>i) codeValue.matchCenterX = vcMatchCenterX[i];
+        if (vcMatchCenterY.size()>i) codeValue.matchCenterY = vcMatchCenterY[i];
+        if (vcMatchCenterW.size()>i) codeValue.matchCenterWidth = vcMatchCenterW[i];
+        if (vcMatchCenterH.size()>i) codeValue.matchCenterHeight = vcMatchCenterH[i];
+        if (vcMatchCenterAng.size()>i) codeValue.matchCenterAng = vcMatchCenterAng[i];
+
+        pRunResult->data.push_back(codeValue);
+    }
+    if (strResult.isEmpty())
+    {
+        if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";
+        else strResult = "NG";
+    }
+    return strResult;
+}
+
+static QString parsePInfo(const QJsonArray& arrPInfo, FixtureRunResult* pRunResult, const QImage& renderImage)
+{
+    Q_UNUSED(renderImage)
+    QString strResult = "";
+    int SINGLE_status = 0;
+    int SINGLE_param_status = 0;
+    for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject infoObj = itr->toObject();
+
+        const int nValueStatus = infoObj.value("nValueStatus").toInt(0); //算法运行的状态（运行正常为1，否则为0）
+        const QString strParamName = infoObj.value("strParamName").toString();
+        const QString strResultTypeName = infoObj.value("strResultTypeName").toString();
+
+        if ("FIXTURE_init_point_x" == strParamName || "FIXTURE_init_point_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->basePointX = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_init_point_y" == strParamName || "FIXTURE_init_point_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->basePointY = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_init_angle" == strParamName || "FIXTURE_init_angle" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->baseAngle = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_run_point_x" == strParamName || "FIXTURE_run_point_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->runPointX = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_run_point_y" == strParamName || "FIXTURE_run_point_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->runPointY = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_run_angle" == strParamName || "FIXTURE_run_angle" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->runAngle = arrValue[0].toDouble(0);
         }
         //运行状态结果
         else if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
@@ -1261,6 +1569,455 @@ static QString parsePInfo(const QJsonArray& arrPInfo, MatchLocateRunResult* pRun
         }
     }
 
+    if (strResult.isEmpty())
+    {
+        if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";
+        else strResult = "NG";
+    }
+    return strResult;
+}
+
+static QString parsePInfo(const QJsonArray& arrPInfo, ImageCountRunResult* pRunResult, const QImage& renderImage)
+{
+    Q_UNUSED(renderImage)
+    QString strResult = "";
+    int SINGLE_status = 0;
+    int SINGLE_param_status = 0;
+
+    QVector<double> vcCenterX;
+    QVector<double> vcCenterY;
+    QVector<double> vcWidth;
+    QVector<double> vcHeight;
+    QVector<double> vcAngle;
+    QVector<double> vcScore;
+    QVector<double> vcMatchX;
+    QVector<double> vcMatchY;
+
+    for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject infoObj = itr->toObject();
+
+        const int nValueStatus = infoObj.value("nValueStatus").toInt(0); //算法运行的状态（运行正常为1，否则为0）
+        const QString strParamName = infoObj.value("strParamName").toString();
+        const QString strResultTypeName = infoObj.value("strResultTypeName").toString();
+
+        if ("BOX_det_box_cx" == strParamName || "BOX_det_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.centerX = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_cy" == strParamName || "BOX_det_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.centerY = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_w" == strParamName || "BOX_det_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.width = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_h" == strParamName || "BOX_det_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.height = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_ang" == strParamName || "BOX_det_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.angle = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_match_box_cx" == strParamName || "BOX1_match_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCenterX.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_cy" == strParamName || "BOX1_match_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCenterY.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_w" == strParamName || "BOX1_match_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcWidth.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_h" == strParamName || "BOX1_match_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcHeight.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_match_box_ang" == strParamName || "BOX1_match_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcAngle.append(arrValue[i].toDouble());
+        }
+        else if ("SINGLE_match_score" == strParamName || "SINGLE_match_score" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcScore.append(arrValue[i].toDouble());
+        }
+        else if ("POINT_match_point_x" == strParamName || "POINT_match_point_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchX.append(arrValue[i].toDouble());
+        }
+        else if ("POINT_match_point_y" == strParamName || "POINT_match_point_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcMatchY.append(arrValue[i].toDouble());
+        }
+        //运行状态结果
+        else if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
+        {
+            SINGLE_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status" == strParamName || "SINGLE_param_status" == strResultTypeName)
+        {
+            SINGLE_param_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status_string" == strParamName || "SINGLE_param_status_string" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) strResult = arrValue[0].toObject().value("strValue").toString("NG");
+        }
+        //运行结果判断依据
+        else if ("SINGLE_rst_string_cn" == strParamName || "SINGLE_rst_string_cn" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefCN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefCN = "";
+        }
+        else if ("SINGLE_rst_string_en" == strParamName || "SINGLE_rst_string_en" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefEN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefEN = "";
+        }
+    }
+    auto iMaxSize = calcMaxValue(vcCenterX.size(),vcCenterY.size(),vcWidth.size(),
+                                 vcHeight.size(),vcAngle.size(),vcScore.size());
+
+    for (int i=0; i<iMaxSize; ++i)
+    {
+        ImageCountRunResult::MatchResult matchValue;
+        if (vcCenterX.size()>i) matchValue.centerX = vcCenterX[i];
+        if (vcCenterY.size()>i) matchValue.centerY = vcCenterY[i];
+        if (vcWidth.size()>i) matchValue.width = vcWidth[i];
+        if (vcHeight.size()>i) matchValue.height = vcHeight[i];
+        if (vcAngle.size()>i) matchValue.angle = vcAngle[i];
+        if (vcScore.size()>i) matchValue.score = vcScore[i];
+        if (vcScore.size()>i) matchValue.matchX = vcMatchX[i];
+        if (vcScore.size()>i) matchValue.matchY = vcMatchY[i];
+        pRunResult->matchResult.push_back(matchValue);
+    }
+
+    if (strResult.isEmpty())
+    {
+        if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";
+        else strResult = "NG";
+    }
+    return strResult;
+}
+
+static QString parsePInfo(const QJsonArray& arrPInfo, SpeckleExistRunResult* pRunResult, const QImage& renderImage)
+{
+    QString strResult = "";
+    int SINGLE_status = 0;
+    int SINGLE_param_status = 0;
+
+    if (!renderImage.isNull())
+    {
+        pRunResult->frame = CDobotDevice::image2Base64Byte(renderImage);
+        pRunResult->width = renderImage.width();
+        pRunResult->height = renderImage.height();
+    }
+    for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject infoObj = itr->toObject();
+
+        const int nValueStatus = infoObj.value("nValueStatus").toInt(0); //算法运行的状态（运行正常为1，否则为0）
+        const QString strParamName = infoObj.value("strParamName").toString();
+        const QString strResultTypeName = infoObj.value("strResultTypeName").toString();
+
+        if ("SINGLE_area" == strParamName || "SINGLE_area" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->area = arrValue[0].toDouble(0);
+        }
+        else if ("POINT_centroid_x" == strParamName || "POINT_centroid_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->centroidX = arrValue[0].toDouble(0);
+        }
+        else if ("POINT_centroid_y" == strParamName || "POINT_centroid_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->centroidY = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_cx" == strParamName || "BOX_det_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.centerX = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_cy" == strParamName || "BOX_det_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.centerY = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_w" == strParamName || "BOX_det_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.width = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_h" == strParamName || "BOX_det_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.height = arrValue[0].toDouble(0);
+        }
+        else if ("BOX_det_box_ang" == strParamName || "BOX_det_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->boxArea.angle = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_blob_box_cx" == strParamName || "BOX1_blob_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->blobArea.centerX = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_blob_box_cy" == strParamName || "BOX1_blob_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->blobArea.centerY = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_blob_box_w" == strParamName || "BOX1_blob_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->blobArea.width = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_blob_box_h" == strParamName || "BOX1_blob_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->blobArea.height = arrValue[0].toDouble(0);
+        }
+        else if ("BOX1_blob_box_ang" == strParamName || "BOX1_blob_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->blobArea.angle = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_algo_used_run_point_x" == strParamName || "FIXTURE_algo_used_run_point_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->fixtureRunPointX = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_algo_used_run_point_y" == strParamName || "FIXTURE_algo_used_run_point_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->fixtureRunPointY = arrValue[0].toDouble(0);
+        }
+        else if ("FIXTURE_algo_used_run_angle" == strParamName || "FIXTURE_algo_used_run_angle" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            if (arrValue.size()>0) pRunResult->fixtureRunAngle = arrValue[0].toDouble(0);
+        }
+
+        //运行状态结果
+        else if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
+        {
+            SINGLE_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status" == strParamName || "SINGLE_param_status" == strResultTypeName)
+        {
+            SINGLE_param_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status_string" == strParamName || "SINGLE_param_status_string" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) strResult = arrValue[0].toObject().value("strValue").toString("NG");
+        }
+        //运行结果判断依据
+        else if ("SINGLE_rst_string_cn" == strParamName || "SINGLE_rst_string_cn" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefCN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefCN = "";
+        }
+        else if ("SINGLE_rst_string_en" == strParamName || "SINGLE_rst_string_en" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefEN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefEN = "";
+        }
+    }
+    if (strResult.isEmpty())
+    {
+        if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";
+        else strResult = "NG";
+    }
+    return strResult;
+}
+
+static QString parsePInfo(const QJsonArray& arrPInfo, SpeckleCountRunResult* pRunResult, const QImage& renderImage)
+{
+    QString strResult = "";
+    int SINGLE_status = 0;
+    int SINGLE_param_status = 0;
+
+    QVector<double> vcCenterXBox;
+    QVector<double> vcCenterYBox;
+    QVector<double> vcWidthBox;
+    QVector<double> vcHeightBox;
+    QVector<double> vcAngleBox;
+
+    QVector<double> vcCenterXMatch;
+    QVector<double> vcCenterYMatch;
+    QVector<double> vcWidthMatch;
+    QVector<double> vcHeightMatch;
+    QVector<double> vcAngleMatch;
+    QVector<double> vcAreaMatch;
+    QVector<double> vcCentroidXMatch;
+    QVector<double> vcCentroidYMatch;
+
+    if (!renderImage.isNull())
+    {
+        pRunResult->frame = CDobotDevice::image2Base64Byte(renderImage);
+        pRunResult->width = renderImage.width();
+        pRunResult->height = renderImage.height();
+    }
+    for (auto itr=arrPInfo.begin(); itr!=arrPInfo.end(); ++itr)
+    {
+        if (!itr->isObject()) continue;
+        QJsonObject infoObj = itr->toObject();
+
+        const int nValueStatus = infoObj.value("nValueStatus").toInt(0); //算法运行的状态（运行正常为1，否则为0）
+        const QString strParamName = infoObj.value("strParamName").toString();
+        const QString strResultTypeName = infoObj.value("strResultTypeName").toString();
+
+        if ("BOX_det_box_cx" == strParamName || "BOX_det_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCenterXBox.append(arrValue[i].toDouble());
+        }
+        else if ("BOX_det_box_cy" == strParamName || "BOX_det_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCenterYBox.append(arrValue[i].toDouble());
+        }
+        else if ("BOX_det_box_w" == strParamName || "BOX_det_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcWidthBox.append(arrValue[i].toDouble());
+        }
+        else if ("BOX_det_box_h" == strParamName || "BOX_det_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcHeightBox.append(arrValue[i].toDouble());
+        }
+        else if ("BOX_det_box_ang" == strParamName || "BOX_det_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcAngleBox.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_blob_box_cx" == strParamName || "BOX1_blob_box_cx" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCenterXMatch.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_blob_box_cy" == strParamName || "BOX1_blob_box_cy" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCenterYMatch.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_blob_box_w" == strParamName || "BOX1_blob_box_w" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcWidthMatch.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_blob_box_h" == strParamName || "BOX1_blob_box_h" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcHeightMatch.append(arrValue[i].toDouble());
+        }
+        else if ("BOX1_blob_box_ang" == strParamName || "BOX1_blob_box_ang" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcAngleMatch.append(arrValue[i].toDouble());
+        }
+        else if ("SINGLE_area" == strParamName || "SINGLE_area" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcAreaMatch.append(arrValue[i].toDouble());
+        }
+        else if ("POINT_centroid_x" == strParamName || "POINT_centroid_x" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCentroidXMatch.append(arrValue[i].toDouble());
+        }
+        else if ("POINT_centroid_y" == strParamName || "POINT_centroid_y" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pFloatValue").toArray();
+            for (int i=0;i<arrValue.size();++i) vcCentroidYMatch.append(arrValue[i].toDouble());
+        }
+
+        //运行状态结果
+        else if ("SINGLE_status" == strParamName || "SINGLE_status" == strResultTypeName)
+        {
+            SINGLE_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status" == strParamName || "SINGLE_param_status" == strResultTypeName)
+        {
+            SINGLE_param_status = nValueStatus;
+        }
+        else if ("SINGLE_param_status_string" == strParamName || "SINGLE_param_status_string" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) strResult = arrValue[0].toObject().value("strValue").toString("NG");
+        }
+        //运行结果判断依据
+        else if ("SINGLE_rst_string_cn" == strParamName || "SINGLE_rst_string_cn" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefCN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefCN = "";
+        }
+        else if ("SINGLE_rst_string_en" == strParamName || "SINGLE_rst_string_en" == strResultTypeName)
+        {
+            QJsonArray arrValue = infoObj.value("pStringValue").toArray();
+            if (arrValue.size()>0) g_RunResultTempData.strResultRefEN = arrValue[0].toObject().value("strValue").toString();
+            else g_RunResultTempData.strResultRefEN = "";
+        }
+    }
+
+    auto iMaxSize = calcMaxValue(vcCenterXBox.size(),vcCenterYBox.size(),vcWidthBox.size(),
+                                 vcHeightBox.size(),vcAngleBox.size());
+    for (int i=0; i<iMaxSize; ++i)
+    {
+        SpeckleCountRunResult::BoxArea boxArea;
+        if (vcCenterXBox.size()>i) boxArea.centerX = vcCenterXBox[i];
+        if (vcCenterYBox.size()>i) boxArea.centerY = vcCenterYBox[i];
+        if (vcWidthBox.size()>i) boxArea.width = vcWidthBox[i];
+        if (vcHeightBox.size()>i) boxArea.height = vcHeightBox[i];
+        if (vcAngleBox.size()>i) boxArea.angle = vcAngleBox[i];
+        pRunResult->boxArea.push_back(boxArea);
+    }
+
+    iMaxSize = calcMaxValue(vcCenterXMatch.size(),vcCenterYMatch.size(),vcWidthMatch.size(),
+                            vcHeightMatch.size(),vcAngleMatch.size(),vcAreaMatch.size(),
+                            vcCentroidXMatch.size(),vcCentroidYMatch.size());
+    for (int i=0; i<iMaxSize; ++i)
+    {
+        SpeckleCountRunResult::BlobAreaResult matchValue;
+        if (vcCenterXMatch.size()>i) matchValue.centerX = vcCenterXMatch[i];
+        if (vcCenterYMatch.size()>i) matchValue.centerY = vcCenterYMatch[i];
+        if (vcWidthMatch.size()>i) matchValue.width = vcWidthMatch[i];
+        if (vcHeightMatch.size()>i) matchValue.height = vcHeightMatch[i];
+        if (vcAngleMatch.size()>i) matchValue.angle = vcAngleMatch[i];
+        if (vcAreaMatch.size()>i) matchValue.area = vcAreaMatch[i];
+        if (vcCentroidXMatch.size()>i) matchValue.centroidX = vcCentroidXMatch[i];
+        if (vcCentroidYMatch.size()>i) matchValue.centroidY = vcCentroidYMatch[i];
+        pRunResult->blobArea.push_back(matchValue);
+    }
     if (strResult.isEmpty())
     {
         if (1 == SINGLE_status && 1 == SINGLE_param_status) strResult = "OK";

@@ -19,6 +19,7 @@ struct CCreateUserCoordinateRequestBean : public CJsonMessage
     double rx = 0.0;
     double ry = 0.0;
     double rz = 0.0;
+    double qrCodeSquare = 50.0; //二维码尺寸
 };
 
 class CCreateUserCoordinateRequestParams : public CJsonMessage

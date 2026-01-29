@@ -60,6 +60,8 @@ bool CCalibrateSamplingResultResponseBean::fromJson(const QJsonObject &obj)
     {
         frame = obj["frame"].toString();
     }
+    width = obj["width"].toInt();
+    height = obj["height"].toInt();
     if (obj.contains("fileName") && obj["fileName"].isString())
     {
         fileName = obj["fileName"].toString();
@@ -71,6 +73,8 @@ QJsonObject CCalibrateSamplingResultResponseBean::toJsonObject() const
 {
     QJsonObject obj;
     obj.insert("frame",frame);
+    obj.insert("width",width);
+    obj.insert("height",height);
     obj.insert("fileName",fileName);
     return obj;
 }

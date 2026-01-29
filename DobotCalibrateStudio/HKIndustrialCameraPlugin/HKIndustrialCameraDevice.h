@@ -29,7 +29,8 @@ public:
     bool calcGetCalibrateResult(MyPointF6D& avgValue, MyPointF6D& maxValue) Q_DECL_OVERRIDE;
     bool generateCalibrateFile(const QString& strSaveFileFullName) Q_DECL_OVERRIDE;
     bool createUserCoordinate(const QString& strCalibrateFile, const MyPointF6D& robotPos,
-                              MyPointF6D& coordinatePos, int& iId, QImage& retImg) Q_DECL_OVERRIDE;
+                              const double qrCodeSquare,MyPointF6D& coordinatePos,
+                              int& iId, QImage& retImg) Q_DECL_OVERRIDE;
     bool beginCalibrate() Q_DECL_OVERRIDE;
     int endCalibrate() Q_DECL_OVERRIDE;
     bool calibrateSampling(const MyPointF6D& robotPos, QImage& retImg) Q_DECL_OVERRIDE;
@@ -134,7 +135,7 @@ private:
     HKICD_FUNC_PTR_MEMBER(GenerateCalibrateFile);
 
     HKICD_FUNC_PTR_DEF(int,CreateUserCoordinate)(void* pHandler, const char* pszFileFullName,
-                                           const MyPointIndustrial* pRobotPos,
+                                           const MyPointIndustrial* pRobotPos,const double qrCodeSquare,
                                            MyPointIndustrial* pUserCoordinate, int* pId,
                                            void(*pfnCallback)(const ImageDataIndustrial* pData, void* pArgs), void* pArgs);
     HKICD_FUNC_PTR_MEMBER(CreateUserCoordinate);

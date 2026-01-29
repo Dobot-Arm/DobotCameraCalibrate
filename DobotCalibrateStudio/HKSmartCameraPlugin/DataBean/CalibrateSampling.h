@@ -42,6 +42,8 @@ struct CCalibrateSamplingResultResponseBean : public CJsonMessage
     QJsonObject toJsonObject()const Q_DECL_OVERRIDE;
 
     QString frame; //图片数据流帧，base64编码
+    int width;
+    int height;
     QString fileName; //生成的图片名称，比如 a.bmp
 };
 

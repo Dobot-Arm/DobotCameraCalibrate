@@ -23,7 +23,7 @@ struct CSetModuleUIParameterRequestBean2 : public CJsonMessage
     QString identify; //相机标识，在连接打开相机时用到这个参数
     QString moduleName; //模块名称
     int moduleId; //模块id值
-    QHash<QString, CSetModuleUIParameterRequestBean> parameter;
+    QList<CSetModuleUIParameterRequestBean> parameter;
 };
 
 class CSetModuleUIParameterRequestParams : public CJsonMessage

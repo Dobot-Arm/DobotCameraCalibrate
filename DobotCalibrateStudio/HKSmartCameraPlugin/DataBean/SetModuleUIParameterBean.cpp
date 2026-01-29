@@ -34,7 +34,7 @@ bool CSetModuleUIParameterRequestBean2::fromJson(const QJsonObject &obj)
             bean.paramValue = jso.value("paramValue");
             if (!bean.paramName.isEmpty() && !bean.paramType.isEmpty())
             {
-                parameter.insert(bean.paramName, bean);
+                parameter.append(bean);
             }
         }
     }
@@ -51,9 +51,9 @@ QJsonObject CSetModuleUIParameterRequestBean2::toJsonObject() const
     for(auto itr=parameter.begin(); itr!=parameter.end(); ++itr)
     {
         QJsonObject jso;
-        jso.insert("paramName", itr.value().paramName);
-        jso.insert("paramType", itr.value().paramType);
-        jso.insert("paramValue", itr.value().paramValue);
+        jso.insert("paramName", itr->paramName);
+        jso.insert("paramType", itr->paramType);
+        jso.insert("paramValue", itr->paramValue);
         arr.append(jso);
     }
     obj.insert("parameter", arr);

@@ -74,6 +74,12 @@ QString DError::getErrMsg(int code, const QString& strMsg)
         str = "get/set type value fail";break;
     case DT_ERR_SEARCH_CAMERA:
         str = "search camera fail";break;
+    case DT_ERR_UPDATE_FIRMWARE:
+        str = "update firmware fail";break;
+    case DT_ERR_UPDATE_FIRMWARE_PROGRESS:
+        str = "get update firmware progress fail";break;
+    case DT_ERR_UPDATE_FIRMWARE_AGAIN:
+        str = "do not update again during updating";break;
 
     /**************************************************************/
     case DT_ERR_IODEVICE_OPEN:

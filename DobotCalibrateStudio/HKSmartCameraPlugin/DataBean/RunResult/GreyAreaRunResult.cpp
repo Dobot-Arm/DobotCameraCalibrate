@@ -19,6 +19,8 @@ bool GreyAreaRunResult::fromJson(const QJsonObject &obj)
     areaShowArea.angle = showAreaObj["angle"].toDouble();
 
     frame = obj["frame"].toString();
+    width = obj["width"].toInt();
+    height = obj["height"].toInt();
     return true;
 }
 
@@ -44,5 +46,7 @@ QJsonObject GreyAreaRunResult::toJsonObject() const
     obj.insert("areaShowArea",showAreaObj);
 
     obj.insert("frame",frame);
+    obj.insert("width",width);
+    obj.insert("height",height);
     return obj;
 }

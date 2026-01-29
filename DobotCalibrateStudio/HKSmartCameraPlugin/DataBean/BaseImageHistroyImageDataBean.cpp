@@ -40,6 +40,8 @@ QJsonObject CBaseImageHistroyImageDataRequestParams::toJsonObject() const
 bool CBaseImageHistroyImageDataResponseBean::fromJson(const QJsonObject &obj)
 {
     if (obj.contains("frame") && obj["frame"].isString()) frame = obj["frame"].toString();
+    width = obj["width"].toInt();
+    height = obj["height"].toInt();
     return true;
 }
 
@@ -47,6 +49,8 @@ QJsonObject CBaseImageHistroyImageDataResponseBean::toJsonObject() const
 {
     QJsonObject obj;
     obj.insert("frame",frame);
+    obj.insert("width",width);
+    obj.insert("height",height);
     return obj;
 }
 

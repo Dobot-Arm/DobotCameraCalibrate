@@ -3,6 +3,8 @@
 
 #include "JsonMessage.h"
 #include "RunResult/BaseRunResult.h"
+#include "RunResult/BaseImageRunResult.h"
+#include "RunResult/FormatRunResult.h"
 #include "RunResult/MacapriltagRunResult.h"
 #include "RunResult/ImageExistRunResult.h"
 #include "RunResult/DiameterMeasureRunResult.h"
@@ -12,6 +14,10 @@
 #include "RunResult/GreyAreaRunResult.h"
 #include "RunResult/MatchCalibRunResult.h"
 #include "RunResult/MatchLocateRunResult.h"
+#include "RunResult/FixtureRunResult.h"
+#include "RunResult/ImageCountRunResult.h"
+#include "RunResult/SpeckleExistRunResult.h"
+#include "RunResult/SpeckleCountRunResult.h"
 
 struct CGetProjectRunResultRequestBean : public CJsonMessage
 {

@@ -76,6 +76,7 @@ PluginManagerPrivate* CPluginManager::loadPlugin(const QString& strPluginName)
     CREATE_PLUGIN_MGR_MICRO("dobot.camera","HKIndustrialCameraPlugin")
     CREATE_PLUGIN_MGR_MICRO("dobot.ioctrldevice","HKIndustrialIOControllerPlugin")
     CREATE_PLUGIN_MGR_MICRO("dobot.smartcamera","HKSmartCameraPlugin")
+    CREATE_PLUGIN_MGR_MICRO("dobot.controller","DobotControllerPlugin")
     return nullptr;
 }
 
